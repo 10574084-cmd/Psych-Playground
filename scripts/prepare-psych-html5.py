@@ -71,7 +71,7 @@ for flx_file in candidates:
     }
     for old_text, new_text in replacements.items():
         if old_text in fa:
-            fa = fa.replace(old_text, new_text, 1)
+            fa = fa.replace(old_text, new_text)
         elif new_text not in fa:
             raise SystemExit(f"Could not find flxanimate HTML5 file access in {flx_file}")
     flx_file.write_text(fa, encoding="utf-8")
