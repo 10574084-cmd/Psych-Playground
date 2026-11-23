@@ -33,18 +33,18 @@ jobs:
           ref: 2dfa27773a3668e0c1b043a3fb4348942c8a6fb3
           path: psych-engine
 
-      - name: Set up Haxe 4.2.5
+      - name: Set up Haxe 4.3.2
         uses: krdlab/setup-haxe@master
         with:
-          haxe-version: 4.2.5
+          haxe-version: 4.3.2
 
       - name: Install Psych Engine 0.7.3 web dependencies
         run: |
           haxelib setup "$HOME/haxelib"
           haxelib install lime 8.0.1 --quiet
-          haxelib install openfl 9.2.1 --quiet
-          haxelib install flixel 5.2.2 --quiet
-          haxelib install flixel-addons 3.0.2 --quiet
+          haxelib install openfl 9.3.2 --quiet
+          haxelib install flixel 5.5.0 --quiet
+          haxelib install flixel-addons 3.2.1 --quiet
           haxelib install flixel-ui 2.5.0 --quiet
           haxelib install tjson 1.4.0 --quiet
           haxelib git flxanimate https://github.com/ShadowMario/flxanimate dev
