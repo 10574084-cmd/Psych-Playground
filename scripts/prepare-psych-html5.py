@@ -137,18 +137,21 @@ for method, fallback in (
     ("applyBlend", "return bitmap;"),
     ("graphicstoBitmapData", "return gfx.__bitmap;"),
 ):
-    pattern = re.compile(r"(\tpublic function " + method + r"\([^\n]*\)\s*\{)(.*?)(\n\t\})", re.S)
+    pattern = re.compile(r"(?ms)^([ \t]*)public function " + method + r"\([^\n]*\)\s*\{(.*?)(^\1\})")
     match = pattern.search(renderer_source)
     if not match:
         raise SystemExit(f"Could not locate flxanimate {method} method")
     if "#if (js && html5)" not in match.group(2):
+        whole = match.group(0)
+        signature = whole[:whole.find("{") + 1]
+        indent = match.group(1)
         replacement = (
-            match.group(1) + "\n"
+            signature + "\n"
             + "\t\t#if (js && html5)\n"
             + "\t\t" + fallback + "\n"
             + "\t\t#else"
             + match.group(2)
-            + "\n\t\t#end"
+            + "\n\t\t#end\n"
             + match.group(3)
         )
         renderer_source = renderer_source[:match.start()] + replacement + renderer_source[match.end():]
