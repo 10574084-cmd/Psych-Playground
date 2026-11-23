@@ -27,6 +27,218 @@ elif new_state not in source:
     raise SystemExit("Could not locate the initialState declaration in source/Main.hx")
 main.write_text(source, encoding="utf-8")
 
+# Native Playground menu: this replaces the external HTML shell and the default title/menu states.
+main_source = main.read_text(encoding="utf-8")
+if "import states.PlaygroundMenuState;" not in main_source:
+    main_source = main_source.replace("import states.TitleState;", "import states.TitleState;\nimport states.PlaygroundMenuState;", 1)
+main.write_text(main_source, encoding="utf-8")
+
+old_states = (
+    "initialState: TitleState, // initial game state",
+    "initialState: #if html5 states.FreeplayState #else TitleState #end, // initial game state",
+)
+new_initial = "initialState: PlaygroundMenuState, // initial game state"
+if new_initial not in main_source:
+    for old_state in old_states:
+        if old_state in main_source:
+            main_source = main_source.replace(old_state, new_initial, 1)
+            break
+    else:
+        raise SystemExit("Could not locate Main.hx initialState for the native Playground menu")
+main.write_text(main_source, encoding="utf-8")
+
+# Keep navigation inside the Playground Haxe states after Play, Options, and desktop Mods.
+for relative in (
+    "source/states/FreeplayState.hx",
+    "source/states/ModsMenuState.hx",
+    "source/options/OptionsState.hx",
+):
+    route_file = root / relative
+    route_source = route_file.read_text(encoding="utf-8")
+    route_source = route_source.replace(
+        "MusicBeatState.switchState(new MainMenuState());",
+        "MusicBeatState.switchState(new PlaygroundMenuState());"
+    )
+    route_file.write_text(route_source, encoding="utf-8")
+
+menu_file = root / "source" / "states" / "PlaygroundMenuState.hx"
+menu_source = r'''package states;
+
+import objects.Character;
+import options.OptionsState;
+
+class PlaygroundMenuState extends MusicBeatState
+{
+    private var menuItems:Array<FlxText> = [];
+    private var labels:Array<String> = ["PLAY", "OPTIONS", "MODS"];
+    private var curSelected:Int = 0;
+    private var selectedSomething:Bool = false;
+    private var boyfriend:Character;
+
+    override function create():Void
+    {
+        Paths.clearStoredMemory();
+        Mods.loadTopMod();
+        FlxG.mouse.visible = true;
+
+        if (FlxG.sound.music == null)
+            FlxG.sound.playMusic(Paths.music("freakyMenu"), 0.7, true);
+
+        var bg:FlxSprite = new FlxSprite().loadGraphic(Paths.image("menuBG"));
+        bg.antialiasing = ClientPrefs.data.antialiasing;
+        bg.setGraphicSize(Std.int(bg.width * 1.175));
+        bg.updateHitbox();
+        bg.screenCenter();
+        add(bg);
+
+        var shade:FlxSprite = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, FlxColor.BLACK);
+        shade.alpha = 0.32;
+        add(shade);
+
+        var panel:FlxSprite = new FlxSprite(74, 145).makeGraphic(520, 430, FlxColor.BLACK);
+        panel.alpha = 0.48;
+        add(panel);
+
+        var title:FlxText = new FlxText(105, 62, 650, "FNF PLAYGROUND", 56);
+        title.setFormat(Paths.font("vcr.ttf"), 56, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+        title.borderSize = 3;
+        add(title);
+
+        var subtitle:FlxText = new FlxText(110, 124, 600, "PSYCH ENGINE 0.7.3", 18);
+        subtitle.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.CYAN, LEFT);
+        add(subtitle);
+
+        boyfriend = new Character(785, 235, "bf", true);
+        boyfriend.setGraphicSize(Std.int(boyfriend.width * 0.88));
+        boyfriend.updateHitbox();
+        boyfriend.dance();
+        add(boyfriend);
+
+        for (i in 0...labels.length)
+        {
+            var item:FlxText = new FlxText(132, 225 + i * 104, 420, "", 42);
+            item.setFormat(Paths.font("vcr.ttf"), 42, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+            item.borderSize = 2;
+            item.scrollFactor.set();
+            menuItems.push(item);
+            add(item);
+        }
+
+        var hint:FlxText = new FlxText(94, FlxG.height - 54, FlxG.width - 188,
+            "UP / DOWN  SELECT          ENTER  CONFIRM          ESC  BACK", 16);
+        hint.setFormat(Paths.font("vcr.ttf"), 16, FlxColor.WHITE, CENTER);
+        hint.alpha = 0.9;
+        add(hint);
+
+        changeSelection(0);
+        super.create();
+    }
+
+    override function update(elapsed:Float):Void
+    {
+        if (!selectedSomething)
+        {
+            if (controls.UI_UP_P) changeSelection(-1);
+            if (controls.UI_DOWN_P) changeSelection(1);
+
+            for (i in 0...menuItems.length)
+            {
+                if (FlxG.mouse.overlaps(menuItems[i]))
+                {
+                    if (curSelected != i) changeSelection(i - curSelected);
+                    if (FlxG.mouse.justPressed) acceptSelection();
+                }
+            }
+
+            if (controls.ACCEPT) acceptSelection();
+        }
+
+        super.update(elapsed);
+    }
+
+    private function changeSelection(change:Int):Void
+    {
+        curSelected = (curSelected + change + labels.length) % labels.length;
+        FlxG.sound.play(Paths.sound("scrollMenu"), 0.55);
+
+        for (i in 0...menuItems.length)
+        {
+            var selected:Bool = i == curSelected;
+            menuItems[i].text = (selected ? ">  " : "   ") + labels[i];
+            menuItems[i].color = selected ? FlxColor.CYAN : FlxColor.WHITE;
+            menuItems[i].alpha = selected ? 1 : 0.68;
+        }
+    }
+
+    private function acceptSelection():Void
+    {
+        if (selectedSomething) return;
+        selectedSomething = true;
+        FlxG.sound.play(Paths.sound("confirmMenu"));
+
+        switch (curSelected)
+        {
+            case 0:
+                PlayState.isStoryMode = false;
+                MusicBeatState.switchState(new FreeplayState());
+
+            case 1:
+                OptionsState.onPlayState = false;
+                MusicBeatState.switchState(new OptionsState());
+
+            case 2:
+                #if MODS_ALLOWED
+                MusicBeatState.switchState(new ModsMenuState());
+                #else
+                MusicBeatState.switchState(new PlaygroundModsState());
+                #end
+        }
+    }
+}
+'''
+menu_file.write_text(menu_source, encoding="utf-8")
+
+mods_file = root / "source" / "states" / "PlaygroundModsState.hx"
+mods_source = r'''package states;
+
+class PlaygroundModsState extends MusicBeatState
+{
+    override function create():Void
+    {
+        var bg:FlxSprite = new FlxSprite().loadGraphic(Paths.image("menuDesat"));
+        bg.color = 0xFF665AFF;
+        bg.antialiasing = ClientPrefs.data.antialiasing;
+        bg.screenCenter();
+        add(bg);
+
+        var title:FlxText = new FlxText(80, 105, FlxG.width - 160, "MODS", 56);
+        title.setFormat(Paths.font("vcr.ttf"), 56, FlxColor.WHITE, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+        title.borderSize = 3;
+        add(title);
+
+        var message:FlxText = new FlxText(150, 265, FlxG.width - 300,
+            "BROWSER BUILD\n\nPsych Engine 0.7.3 uses a desktop folder-based mod loader.\nThat loader is disabled in HTML5 builds.\n\nZIP character importing still needs a native browser asset bridge.", 25);
+        message.setFormat(Paths.font("vcr.ttf"), 25, FlxColor.WHITE, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+        message.borderSize = 2;
+        add(message);
+
+        var back:FlxText = new FlxText(0, FlxG.height - 85, FlxG.width, "ESC  /  BACK  —  MAIN MENU", 20);
+        back.setFormat(Paths.font("vcr.ttf"), 20, FlxColor.CYAN, CENTER);
+        add(back);
+
+        super.create();
+    }
+
+    override function update(elapsed:Float):Void
+    {
+        super.update(elapsed);
+        if (controls.BACK || controls.ACCEPT)
+            MusicBeatState.switchState(new PlaygroundMenuState());
+    }
+}
+'''
+mods_file.write_text(mods_source, encoding="utf-8")
+
 # Paths.loadAnimateAtlas accepts asset paths. The HTML5 target has no sys.io.File.
 path_source = paths.read_text(encoding="utf-8")
 for variable in ("spriteJson", "animationJson"):
