@@ -955,7 +955,17 @@ class PlaygroundModStore
                 if (path == null) continue;
 
                 var data:Bytes = entry.data;
-                if (entry.compressed) data = haxe.zip.Uncompress.run(data);
+                if (entry.compressed)
+                {
+                    // ZIP method 8 stores a raw DEFLATE stream, without a zlib
+                    // header. Use Haxe's pure inflater in raw mode for HTML5.
+                    var inflater = new haxe.zip.InflateImpl(new BytesInput(data), false, false);
+                    var uncompressed = Bytes.alloc(entry.fileSize);
+                    var written = inflater.readBytes(uncompressed, 0, entry.fileSize);
+                    if (written != entry.fileSize)
+                        throw "Incomplete ZIP entry: " + entry.fileName;
+                    data = uncompressed;
+                }
                 files.set(path, data);
                 files.set(path.toLowerCase(), data);
 
