@@ -825,16 +825,18 @@ class PlaygroundSandboxState extends MusicBeatState
         if (boundJustPressed("pg_p2_note_up")) singPlayer(false, "UP");
         if (boundJustPressed("pg_p2_note_right")) singPlayer(false, "RIGHT");
 
-        // Return to idle after a short fixed hold. This is independent of BPM,
-        // Conductor.stepCrochet, and whether a song is currently playing.
+        // Use a capped delta for the visual hold: a slow browser frame must not
+        // consume the entire sing pose timer immediately after a key press.
+        // This keeps the pose visible for several rendered frames even during a hitch.
+        var singElapsed:Float = Math.min(elapsed, 1 / 30);
         if (playerOneSingTimer > 0)
         {
-            playerOneSingTimer -= elapsed;
+            playerOneSingTimer -= singElapsed;
             if (playerOneSingTimer <= 0 && playerOne != null) playerOne.dance();
         }
         if (playerTwoSingTimer > 0)
         {
-            playerTwoSingTimer -= elapsed;
+            playerTwoSingTimer -= singElapsed;
             if (playerTwoSingTimer <= 0 && playerTwo != null) playerTwo.dance();
         }
 
