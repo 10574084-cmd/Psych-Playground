@@ -1264,12 +1264,12 @@ if image_code not in path_source:
     path_source = path_source.replace(image_anchor, image_code + image_anchor, 1)
 
 atlas_specs = [
-    ("static public function getAtlas", "images/' + key + '.xml", "modXml", "FlxAtlasFrames.fromSparrow(imageLoaded, modXml)"),
-    ("inline static public function getSparrowAtlas", "images/' + key + '.xml", "modXml", "FlxAtlasFrames.fromSparrow(imageLoaded, modXml)"),
-    ("inline static public function getPackerAtlas", "images/' + key + '.txt", "modText", "FlxAtlasFrames.fromSpriteSheetPacker(imageLoaded, modText)"),
-    ("inline static public function getAsepriteAtlas", "images/' + key + '.json", "modJson", "FlxAtlasFrames.fromTexturePackerJson(imageLoaded, modJson)"),
+    ("static public function getAtlas", "xml", "modXml", "FlxAtlasFrames.fromSparrow(imageLoaded, modXml)"),
+    ("inline static public function getSparrowAtlas", "xml", "modXml", "FlxAtlasFrames.fromSparrow(imageLoaded, modXml)"),
+    ("inline static public function getPackerAtlas", "txt", "modText", "FlxAtlasFrames.fromSpriteSheetPacker(imageLoaded, modText)"),
+    ("inline static public function getAsepriteAtlas", "json", "modJson", "FlxAtlasFrames.fromTexturePackerJson(imageLoaded, modJson)"),
 ]
-for signature, path_expression, variable, return_expression in atlas_specs:
+for signature, extension, variable, return_expression in atlas_specs:
     method_start = path_source.find(signature)
     if method_start < 0:
         raise SystemExit("Could not find " + signature)
@@ -1280,7 +1280,7 @@ for signature, path_expression, variable, return_expression in atlas_specs:
     insert_at = line_at + len(image_line)
     code = (
         "\n\t\t#if html5\n"
-        + "\t\tvar " + variable + ":String = PlaygroundModStore.getText('" + path_expression + ");\n"
+        + "\t\tvar " + variable + ":String = PlaygroundModStore.getText(\"images/\" + key + \"." + extension + "\");\n"
         + "\t\tif (" + variable + " != null) return " + return_expression + ";\n"
         + "\t\t#end"
     )
