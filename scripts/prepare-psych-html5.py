@@ -76,6 +76,29 @@ if freeplay_fallback.strip() not in freeplay_source:
     freeplay_source = freeplay_source.replace(freeplay_anchor, freeplay_fallback + freeplay_anchor, 1)
     freeplay.write_text(freeplay_source, encoding="utf-8")
 
+# Psych's MusicPlayer assumes playbackRate.split('.')[1] always exists.
+# In HTML5, the initial Float can stringify as "1", so guard the decimal part.
+music_player = root / "source" / "objects" / "MusicPlayer.hx"
+music_player_source = music_player.read_text(encoding="utf-8")
+old_playback_rate = """\t\t\tvar playbackRate = Std.string(playbackRate);
+\t\t\tif (playbackRate.split('.')[1].length < 2) // Playback rates for like 1.1, 1.2 etc
+\t\t\t\tplaybackRate += '0';
+
+\t\t\ttext = playbackRate;"""
+new_playback_rate = """\t\t\tvar playbackRateText:String = Std.string(playbackRate);
+\t\t\tvar playbackRateParts:Array<String> = playbackRateText.split('.');
+\t\t\tif (playbackRateParts.length < 2)
+\t\t\t\tplaybackRateText += '.00';
+\t\t\telse if (playbackRateParts[1] != null && playbackRateParts[1].length < 2)
+\t\t\t\tplaybackRateText += '0';
+
+\t\t\ttext = playbackRateText;"""
+if old_playback_rate in music_player_source:
+    music_player_source = music_player_source.replace(old_playback_rate, new_playback_rate, 1)
+elif new_playback_rate not in music_player_source:
+    raise SystemExit("Could not locate MusicPlayer.updatePlaybackTxt decimal parsing")
+music_player.write_text(music_player_source, encoding="utf-8")
+
 # Native Playground menu: this replaces the external HTML shell and the default title/menu states.
 main_source = main.read_text(encoding="utf-8")
 if "import states.PlaygroundMenuState;" not in main_source:
