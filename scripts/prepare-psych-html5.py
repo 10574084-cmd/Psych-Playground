@@ -79,33 +79,35 @@ if freeplay_fallback.strip() not in freeplay_source:
 # Record the exact phase of Freeplay.create so a browser exception identifies
 # the failing operation instead of only reporting the outer state constructor.
 freeplay_source = freeplay.read_text(encoding="utf-8")
-stage_decl = "\tpublic static var playgroundDebugStage:String = 'Freeplay not started';\n"
+TAB = chr(9)
+NL = chr(10)
+stage_decl = TAB + "public static var playgroundDebugStage:String = 'Freeplay not started';" + NL
 if "playgroundDebugStage" not in freeplay_source:
-    class_anchor = "class FreeplayState extends MusicBeatState\n{\n"
+    class_anchor = "class FreeplayState extends MusicBeatState" + NL + "{"
     if class_anchor not in freeplay_source:
         raise SystemExit("Could not locate FreeplayState class declaration for diagnostics")
-    freeplay_source = freeplay_source.replace(class_anchor, class_anchor + stage_decl, 1)
+    freeplay_source = freeplay_source.replace(class_anchor, class_anchor + NL + stage_decl.rstrip(NL), 1)
 
 stage_markers = [
-    ("\t\tWeekData.reloadWeekFiles(false);", "reloadWeekFiles"),
-    ("\t\tfor (i in 0...WeekData.weeksList.length) {", "iterate weeksList"),
-    ("\t\t\tif(weekIsLocked(WeekData.weeksList[i])) continue;", "check week lock"),
-    ("\t\t\tvar leWeek:WeekData = WeekData.weeksLoaded.get(WeekData.weeksList[i]);", "read week metadata"),
-    ("\t\t\tfor (j in 0...leWeek.songs.length)", "iterate week songs"),
-    ("\t\t\tWeekData.setDirectoryFromWeek(leWeek);", "set week asset directory"),
-    ("\t\tMods.loadTopMod();", "load top mod"),
-    ("\t\tbg = new FlxSprite().loadGraphic(Paths.image('menuDesat'));", "load Freeplay background"),
-    ("\t\tfor (i in 0...songs.length)", "build Freeplay song list"),
-    ("\t\tbg.color = songs[curSelected].color;", "select initial song"),
-    ("\t\tcurDifficulty = Math.round(Math.max(0, Difficulty.defaultList.indexOf(lastDifficultyName)));", "set initial difficulty"),
-    ("\t\tplayer = new MusicPlayer(this);", "create MusicPlayer"),
-    ("\t\tchangeSelection();", "initialize song selection"),
-    ("\t\tupdateTexts();", "initialize song text positions"),
+    (TAB * 2 + "WeekData.reloadWeekFiles(false);", "reloadWeekFiles"),
+    (TAB * 2 + "for (i in 0...WeekData.weeksList.length) {", "iterate weeksList"),
+    (TAB * 3 + "if(weekIsLocked(WeekData.weeksList[i])) continue;", "check week lock"),
+    (TAB * 3 + "var leWeek:WeekData = WeekData.weeksLoaded.get(WeekData.weeksList[i]);", "read week metadata"),
+    (TAB * 3 + "for (j in 0...leWeek.songs.length)", "iterate week songs"),
+    (TAB * 3 + "WeekData.setDirectoryFromWeek(leWeek);", "set week asset directory"),
+    (TAB * 2 + "Mods.loadTopMod();", "load top mod"),
+    (TAB * 2 + "bg = new FlxSprite().loadGraphic(Paths.image('menuDesat'));", "load Freeplay background"),
+    (TAB * 2 + "for (i in 0...songs.length)", "build Freeplay song list"),
+    (TAB * 2 + "bg.color = songs[curSelected].color;", "select initial song"),
+    (TAB * 2 + "curDifficulty = Math.round(Math.max(0, Difficulty.defaultList.indexOf(lastDifficultyName)));", "set initial difficulty"),
+    (TAB * 2 + "player = new MusicPlayer(this);", "create MusicPlayer"),
+    (TAB * 2 + "changeSelection();", "initialize song selection"),
+    (TAB * 2 + "updateTexts();", "initialize song text positions"),
 ]
 for marker, stage in stage_markers:
     if marker not in freeplay_source:
         raise SystemExit("Could not locate Freeplay diagnostic marker: " + stage)
-    tagged = "\t\tplaygroundDebugStage = '" + stage + "';\n" + marker
+    tagged = TAB * 2 + "playgroundDebugStage = '" + stage + "';" + NL + marker
     if tagged not in freeplay_source:
         freeplay_source = freeplay_source.replace(marker, tagged, 1)
 freeplay.write_text(freeplay_source, encoding="utf-8")
