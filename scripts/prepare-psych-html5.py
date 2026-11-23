@@ -50,7 +50,7 @@ freeplay_fallback = """\t\tif (songs.length == 0)
 \t\t\t}
 \t\t\ttrace("[Playground] Week metadata unavailable; loaded built-in starter songs.");
 \t\t}
-\\n"""
+\n"""
 if freeplay_fallback.strip() not in freeplay_source:
     if freeplay_anchor not in freeplay_source:
         raise SystemExit("Could not locate FreeplayState Mods.loadTopMod() anchor")
