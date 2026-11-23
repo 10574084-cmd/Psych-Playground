@@ -419,7 +419,11 @@ menu_file.write_text(menu_source, encoding="utf-8")
 sandbox_file = root / "source" / "states" / "PlaygroundSandboxState.hx"
 sandbox_source = r'''package states;
 
+import backend.BaseStage;
+import backend.CoolUtil;
 import backend.Paths;
+import backend.Song;
+import flixel.FlxBasic;
 import flixel.FlxG;
 import flixel.FlxSprite;
 import flixel.text.FlxText;
@@ -429,20 +433,15 @@ import objects.Character;
 
 class PlaygroundSandboxState extends MusicBeatState
 {
-    private static var characterIds:Array<String> = ["bf", "dad", "gf"];
-    private static var characterNames:Array<String> = ["BOYFRIEND", "DADDY DEAREST", "GIRLFRIEND"];
-    private static var stageNames:Array<String> = ["THEATRE", "NIGHT", "GRID"];
-    private static var stageColors:Array<FlxColor> = [
-        FlxColor.fromRGB(48, 28, 68),
-        FlxColor.fromRGB(20, 28, 48),
-        FlxColor.fromRGB(28, 42, 48)
-    ];
-
+    private var characterIds:Array<String> = [];
+    private var stageIds:Array<String> = ["stage", "spooky", "philly", "limo", "mall", "mallEvil", "school", "schoolEvil", "tank"];
+    private var stageLabels:Array<String> = ["WEEK 1 - STAGE", "WEEK 2 - SPOOKY", "WEEK 3 - PHILLY", "WEEK 4 - LIMO", "WEEK 5 - MALL", "WEEK 5 - MALL EVIL", "WEEK 6 - SCHOOL", "WEEK 6 - SCHOOL EVIL", "WEEK 7 - TANK"];
     private var characterIndex:Int = 0;
     private var stageIndex:Int = 0;
     private var player:Character;
-    private var backdrop:FlxSprite;
-    private var floor:FlxSprite;
+    private var activeStage:BaseStage;
+    private var stageObjects:Array<FlxBasic> = [];
+    private var characterLayerIndex:Int = 0;
     private var characterLabel:FlxText;
     private var stageLabel:FlxText;
     private var actionLabel:FlxText;
@@ -450,8 +449,25 @@ class PlaygroundSandboxState extends MusicBeatState
 
     override function create():Void
     {
+        super.create();
         FlxG.mouse.visible = true;
-        FlxG.sound.playMusic(Paths.music("freakyMenu"), 0.35, true);
+
+        // Load the complete character catalog shipped by Psych Engine.
+        characterIds = CoolUtil.coolTextFile(Paths.getSharedPath("data/characterList.txt"));
+        characterIds = [for (id in characterIds) if (id != null && id.trim().length > 0) id.trim()];
+        if (characterIds.length == 0) characterIds = ["bf", "dad", "gf"];
+
+        // Stage classes read PlayState's song metadata. Supply the built-in tutorial metadata
+        // without starting a chart or a PlayState gameplay session.
+        try
+        {
+            PlayState.SONG = Song.loadFromJson("tutorial");
+            PlayState.isStoryMode = false;
+        }
+        catch (error:Dynamic)
+        {
+            trace("[Playground] Could not read tutorial metadata: " + error);
+        }
 
         drawStage();
 
@@ -467,28 +483,27 @@ class PlaygroundSandboxState extends MusicBeatState
         subtitle.setFormat(Paths.font("vcr.ttf"), 15, FlxColor.CYAN, FlxTextAlign.LEFT);
         add(subtitle);
 
-        player = new Character(FlxG.width * 0.54, FlxG.height * 0.30, characterIds[characterIndex], true);
-        player.dance();
-        add(player);
+        characterLayerIndex = members.length;
+        createSelectedCharacter();
 
-        var sidePanel:FlxSprite = new FlxSprite(24, 125).makeGraphic(330, 310, FlxColor.BLACK);
-        sidePanel.alpha = 0.62;
+        var sidePanel:FlxSprite = new FlxSprite(24, 125).makeGraphic(350, 370, FlxColor.BLACK);
+        sidePanel.alpha = 0.68;
         add(sidePanel);
 
-        characterLabel = new FlxText(45, 150, 290, "", 25);
-        characterLabel.setFormat(Paths.font("vcr.ttf"), 25, FlxColor.WHITE, FlxTextAlign.LEFT);
+        characterLabel = new FlxText(45, 150, 310, "", 22);
+        characterLabel.setFormat(Paths.font("vcr.ttf"), 22, FlxColor.WHITE, FlxTextAlign.LEFT);
         add(characterLabel);
 
-        stageLabel = new FlxText(45, 192, 290, "", 18);
-        stageLabel.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.CYAN, FlxTextAlign.LEFT);
+        stageLabel = new FlxText(45, 190, 310, "", 17);
+        stageLabel.setFormat(Paths.font("vcr.ttf"), 17, FlxColor.CYAN, FlxTextAlign.LEFT);
         add(stageLabel);
 
-        var controlsTitle:FlxText = new FlxText(45, 240, 280, "FREESTYLE CONTROLS", 18);
-        controlsTitle.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.YELLOW, LEFT);
+        var controlsTitle:FlxText = new FlxText(45, 235, 300, "FREESTYLE CONTROLS", 18);
+        controlsTitle.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.YELLOW, FlxTextAlign.LEFT);
         add(controlsTitle);
 
-        var controlsText:FlxText = new FlxText(45, 274, 285,
-            "ARROWS   SING / ANIMATE\nA / D      CHANGE CHARACTER\nQ / E      CHANGE STAGE\nM           MOD MANAGER\nESC        MAIN MENU", 16);
+        var controlsText:FlxText = new FlxText(45, 270, 310,
+            "ARROWS   SING / ANIMATE\nA / D      CHARACTER\nQ / E      REAL STAGE\nM           IMPORT MOD ZIP\nESC        MAIN MENU", 16);
         controlsText.setFormat(Paths.font("vcr.ttf"), 16, FlxColor.WHITE, FlxTextAlign.LEFT);
         add(controlsText);
 
@@ -497,50 +512,105 @@ class PlaygroundSandboxState extends MusicBeatState
         add(actionLabel);
 
         refreshLabels();
-        super.create();
     }
 
-    private function drawStage():Void
+    private function createSelectedCharacter():Void
     {
-        if (backdrop != null)
-        {
-            backdrop.makeGraphic(FlxG.width, FlxG.height, stageColors[stageIndex]);
-            floor.makeGraphic(FlxG.width, Std.int(FlxG.height * 0.22), FlxColor.fromRGB(36 + stageIndex * 8, 22 + stageIndex * 10, 43 + stageIndex * 6));
-            return;
-        }
-
-        backdrop = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, stageColors[stageIndex]);
-        add(backdrop);
-
-        var glow:FlxSprite = new FlxSprite(0, 110).makeGraphic(FlxG.width, 3, FlxColor.fromRGB(178, 91, 210));
-        glow.alpha = 0.75;
-        add(glow);
-
-        floor = new FlxSprite(0, FlxG.height * 0.78).makeGraphic(FlxG.width, Std.int(FlxG.height * 0.22), FlxColor.fromRGB(36, 22, 43));
-        add(floor);
-
-        var floorLine:FlxSprite = new FlxSprite(0, FlxG.height * 0.78).makeGraphic(FlxG.width, 4, FlxColor.fromRGB(210, 150, 255));
-        add(floorLine);
-    }
-    private function refreshLabels():Void
-    {
-        characterLabel.text = "CHARACTER: " + characterNames[characterIndex];
-        stageLabel.text = "STAGE: " + stageNames[stageIndex];
-    }
-
-    private function changeCharacter(change:Int):Void
-    {
-        characterIndex = (characterIndex + change + characterIds.length) % characterIds.length;
-
         if (player != null)
         {
             remove(player, true);
             player.destroy();
         }
 
-        player = new Character(FlxG.width * 0.54, FlxG.height * 0.30, characterIds[characterIndex], true);
+        var startX:Float = 770;
+        var startY:Float = 450;
+        var stageData = backend.StageData.getStageFile(stageIds[stageIndex]);
+        if (stageData != null && stageData.boyfriend != null && stageData.boyfriend.length > 1)
+        {
+            startX = stageData.boyfriend[0];
+            startY = stageData.boyfriend[1];
+        }
+
+        player = new Character(startX, startY, characterIds[characterIndex], true);
         player.dance();
-        insert(7, player);
+        insert(Std.int(Math.min(characterLayerIndex, members.length)), player);
+    }
+
+    private function drawStage():Void
+    {
+        // Remove only sprites created by the previous native Psych stage class.
+        for (object in stageObjects)
+        {
+            remove(object, true);
+            object.destroy();
+        }
+        stageObjects = [];
+
+        if (activeStage != null)
+        {
+            stages.remove(activeStage);
+            activeStage.destroy();
+            activeStage = null;
+        }
+
+        if (PlayState.SONG != null)
+        {
+            PlayState.SONG.stage = stageIds[stageIndex];
+            PlayState.SONG.song = stageIds[stageIndex];
+            PlayState.SONG.gfVersion = "gf";
+        }
+
+        var before:Array<FlxBasic> = members.copy();
+
+        // These are Psych Engine's actual compiled stage implementations and assets,
+        // not colored placeholder backgrounds.
+        switch (stageIds[stageIndex])
+        {
+            case "stage": activeStage = new states.stages.StageWeek1();
+            case "spooky": activeStage = new states.stages.Spooky();
+            case "philly": activeStage = new states.stages.Philly();
+            case "limo": activeStage = new states.stages.Limo();
+            case "mall": activeStage = new states.stages.Mall();
+            case "mallEvil": activeStage = new states.stages.MallEvil();
+            case "school": activeStage = new states.stages.School();
+            case "schoolEvil": activeStage = new states.stages.SchoolEvil();
+            case "tank": activeStage = new states.stages.Tank();
+        }
+
+        for (object in members)
+        {
+            if (before.indexOf(object) < 0)
+                stageObjects.push(object);
+        }
+
+        // Keep the selected character above the stage sprites and below the editor UI.
+        if (player != null)
+        {
+            remove(player, true);
+            insert(Std.int(Math.min(characterLayerIndex, members.length)), player);
+        }
+    }
+
+    private function refreshLabels():Void
+    {
+        if (characterLabel != null)
+            characterLabel.text = "CHARACTER (" + (characterIndex + 1) + "/" + characterIds.length + "): " + characterIds[characterIndex].toUpperCase();
+        if (stageLabel != null)
+            stageLabel.text = "STAGE (" + (stageIndex + 1) + "/" + stageIds.length + "): " + stageLabels[stageIndex];
+    }
+
+    private function changeCharacter(change:Int):Void
+    {
+        characterIndex = (characterIndex + change + characterIds.length) % characterIds.length;
+        createSelectedCharacter();
+        refreshLabels();
+        FlxG.sound.play(Paths.sound("scrollMenu"), 0.5);
+    }
+
+    private function changeStage(change:Int):Void
+    {
+        stageIndex = (stageIndex + change + stageIds.length) % stageIds.length;
+        drawStage();
         refreshLabels();
         FlxG.sound.play(Paths.sound("scrollMenu"), 0.5);
     }
@@ -548,7 +618,6 @@ class PlaygroundSandboxState extends MusicBeatState
     private function sing(direction:String):Void
     {
         if (player == null) return;
-
         player.playAnim("sing" + direction, true);
         singTimer = 0.42;
         actionLabel.text = "PLAYING: SING" + direction.toUpperCase();
@@ -564,22 +633,12 @@ class PlaygroundSandboxState extends MusicBeatState
 
         if (FlxG.keys.justPressed.A) changeCharacter(-1);
         if (FlxG.keys.justPressed.D) changeCharacter(1);
-
-        if (FlxG.keys.justPressed.Q)
-        {
-            stageIndex = (stageIndex + stageNames.length - 1) % stageNames.length;
-            drawStage();
-            refreshLabels();
-        }
-        if (FlxG.keys.justPressed.E)
-        {
-            stageIndex = (stageIndex + 1) % stageNames.length;
-            drawStage();
-            refreshLabels();
-        }
+        if (FlxG.keys.justPressed.Q) changeStage(-1);
+        if (FlxG.keys.justPressed.E) changeStage(1);
 
         if (FlxG.keys.justPressed.M)
         {
+            PlaygroundModsState.returnToSandbox = true;
             MusicBeatState.switchState(new PlaygroundModsState());
             return;
         }
@@ -601,8 +660,19 @@ class PlaygroundSandboxState extends MusicBeatState
 
         super.update(elapsed);
     }
+
+    override function destroy():Void
+    {
+        if (activeStage != null)
+        {
+            stages.remove(activeStage);
+            activeStage.destroy();
+        }
+        super.destroy();
+    }
 }
 '''
+
 sandbox_file.write_text(sandbox_source, encoding="utf-8")
 
 # Retain Psych Freeplay, but turn otherwise opaque browser crashes into a readable error screen.
