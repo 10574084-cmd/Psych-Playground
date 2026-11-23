@@ -744,6 +744,290 @@ class PlaygroundFreeplayState extends FreeplayState
 '''
 freeplay_wrapper.write_text(freeplay_wrapper_source, encoding="utf-8")
 
+# Browser-side ZIP importer and asset cache for Playground mods.
+mod_store = root / "source" / "backend" / "PlaygroundModStore.hx"
+mod_store_source = r'''package backend;
+
+import haxe.crypto.Base64;
+import haxe.ds.StringMap;
+import haxe.io.Bytes;
+import haxe.io.BytesInput;
+import haxe.zip.Reader;
+import flixel.graphics.FlxGraphic;
+import openfl.display.BitmapData;
+
+class PlaygroundModStore
+{
+    public static var activeModName:String = "";
+    public static var characterIds:Array<String> = [];
+    private static var files:StringMap<Bytes> = new StringMap<Bytes>();
+    private static var graphics:StringMap<FlxGraphic> = new StringMap<FlxGraphic>();
+
+    public static function getText(path:String):String
+    {
+        var normalized = normalizePath(path);
+        if (normalized == null) return null;
+        var data = files.get(normalized);
+        if (data == null) data = files.get(normalized.toLowerCase());
+        return data == null ? null : data.toString();
+    }
+
+    public static function getGraphic(key:String):FlxGraphic
+    {
+        var path = key;
+        if (!path.startsWith("images/")) path = "images/" + path;
+        if (!path.toLowerCase().endsWith(".png")) path += ".png";
+        var result = graphics.get(path);
+        if (result == null) result = graphics.get(path.toLowerCase());
+        return result;
+    }
+
+    public static function importZip(bytes:Bytes, name:String, callback:Bool->String->Void):Void
+    {
+        if (bytes == null || bytes.length < 4)
+        {
+            callback(false, "The selected file is empty or is not a ZIP archive.");
+            return;
+        }
+
+        parseArchive(bytes, function(success:Bool, message:String)
+        {
+            if (!success)
+            {
+                callback(false, message);
+                return;
+            }
+            activeModName = name;
+            saveArchive(bytes, name, callback);
+        });
+    }
+
+    public static function loadStored(callback:Bool->String->Void):Void
+    {
+        #if js
+        openDatabase(function(db:Dynamic)
+        {
+            var tx:Dynamic = db.transaction(["mods"], "readonly");
+            var request:Dynamic = tx.objectStore("mods").get("active");
+            request.onsuccess = function(_)
+            {
+                var record:Dynamic = request.result;
+                if (record == null)
+                {
+                    callback(false, "No imported mod.");
+                    return;
+                }
+                activeModName = Reflect.field(record, "name");
+                try
+                {
+                    var archive:String = Reflect.field(record, "archive");
+                    parseArchive(Base64.decode(archive), callback);
+                }
+                catch (error:Dynamic)
+                {
+                    callback(false, "Could not restore the imported ZIP: " + Std.string(error));
+                }
+            };
+            request.onerror = function(_) callback(false, "Could not read the saved mod.");
+        }, function(error:String) callback(false, error));
+        #else
+        callback(false, "ZIP storage is only available in the HTML5 build.");
+        #end
+    }
+
+    public static function clearStored(callback:Bool->String->Void):Void
+    {
+        #if js
+        openDatabase(function(db:Dynamic)
+        {
+            var tx:Dynamic = db.transaction(["mods"], "readwrite");
+            tx.objectStore("mods").delete("active");
+            tx.oncomplete = function(_)
+            {
+                activeModName = "";
+                characterIds = [];
+                files = new StringMap<Bytes>();
+                graphics = new StringMap<FlxGraphic>();
+                callback(true, "Imported mod removed.");
+            };
+            tx.onerror = function(_) callback(false, "Could not remove the saved mod.");
+        }, function(error:String) callback(false, error));
+        #else
+        callback(false, "ZIP storage is only available in the HTML5 build.");
+        #end
+    }
+
+    private static function saveArchive(bytes:Bytes, name:String, callback:Bool->String->Void):Void
+    {
+        #if js
+        openDatabase(function(db:Dynamic)
+        {
+            var tx:Dynamic = db.transaction(["mods"], "readwrite");
+            tx.objectStore("mods").put({name: name, archive: Base64.encode(bytes)}, "active");
+            tx.oncomplete = function(_) callback(true, "Mod imported and saved.");
+            tx.onerror = function(_) callback(false, "Browser storage could not save this ZIP.");
+        }, function(error:String) callback(false, error));
+        #else
+        callback(false, "ZIP importing is only available in the HTML5 build.");
+        #end
+    }
+
+    #if js
+    private static function openDatabase(onReady:Dynamic->Void, onError:String->Void):Void
+    {
+        try
+        {
+            var factory:Dynamic = untyped js.Browser.window.indexedDB;
+            if (factory == null)
+            {
+                onError("This browser does not support IndexedDB.");
+                return;
+            }
+            var request:Dynamic = factory.open("FNFPlaygroundMods", 1);
+            request.onupgradeneeded = function(_)
+            {
+                var db:Dynamic = request.result;
+                if (!db.objectStoreNames.contains("mods")) db.createObjectStore("mods");
+            };
+            request.onsuccess = function(_) onReady(request.result);
+            request.onerror = function(_) onError("Could not open browser mod storage.");
+        }
+        catch (error:Dynamic)
+        {
+            onError("Browser storage error: " + Std.string(error));
+        }
+    }
+    #end
+
+    private static function normalizePath(raw:String):String
+    {
+        if (raw == null) return null;
+        var path = raw.split("\\").join("/");
+        while (path.startsWith("/")) path = path.substr(1);
+        var pieces = path.split("/");
+        for (piece in pieces)
+            if (piece == "..") return null;
+
+        var roots = ["characters", "images", "stages", "data", "songs", "weeks", "fonts"];
+        var first = -1;
+        for (i in 0...pieces.length)
+        {
+            if (roots.indexOf(pieces[i].toLowerCase()) >= 0)
+            {
+                first = i;
+                break;
+            }
+        }
+        if (first < 0) return null;
+        return pieces.slice(first).join("/");
+    }
+
+    private static function parseArchive(bytes:Bytes, callback:Bool->String->Void):Void
+    {
+        try
+        {
+            files = new StringMap<Bytes>();
+            graphics = new StringMap<FlxGraphic>();
+            characterIds = [];
+
+            var entries = Reader.readZip(new BytesInput(bytes));
+            for (entry in entries)
+            {
+                if (entry.fileName == null || entry.fileName.endsWith("/") || entry.data == null) continue;
+                var path = normalizePath(entry.fileName);
+                if (path == null) continue;
+
+                var data:Bytes = entry.data;
+                if (entry.compressed) data = haxe.zip.Uncompress.run(data);
+                files.set(path, data);
+                files.set(path.toLowerCase(), data);
+
+                var lower = path.toLowerCase();
+                if (lower.startsWith("characters/") && lower.endsWith(".json"))
+                {
+                    var id = path.substring("characters/".length, path.length - 5);
+                    if (id.indexOf("/") < 0 && characterIds.indexOf(id) < 0)
+                        characterIds.push(id);
+                }
+            }
+
+            if (characterIds.length == 0)
+            {
+                callback(false, "No characters/*.json files were found. Choose a Psych Engine mod ZIP.");
+                return;
+            }
+            preloadCharacterImages(callback);
+        }
+        catch (error:Dynamic)
+        {
+            callback(false, "Could not extract this ZIP: " + Std.string(error));
+        }
+    }
+
+    private static function preloadCharacterImages(callback:Bool->String->Void):Void
+    {
+        var needed:StringMap<Bool> = new StringMap<Bool>();
+        for (id in characterIds)
+        {
+            var jsonText = getText("characters/" + id + ".json");
+            if (jsonText == null) continue;
+            try
+            {
+                var json:Dynamic = haxe.Json.parse(jsonText);
+                var image:String = Reflect.field(json, "image");
+                if (image != null && image.length > 0)
+                {
+                    var path = image;
+                    if (!path.startsWith("images/")) path = "images/" + path;
+                    if (!path.toLowerCase().endsWith(".png")) path += ".png";
+                    if (files.exists(path)) needed.set(path, true);
+                    else if (files.exists(path.toLowerCase())) needed.set(path.toLowerCase(), true);
+                }
+            }
+            catch (error:Dynamic)
+            {
+                trace("[Playground Mods] Invalid character JSON " + id + ": " + error);
+            }
+        }
+
+        var paths:Array<String> = [for (path in needed.keys()) path];
+        if (paths.length == 0)
+        {
+            callback(true, "Imported " + characterIds.length + " character definitions; atlas PNGs were not found.");
+            return;
+        }
+
+        var pending:Int = paths.length;
+        var failed:Int = 0;
+        for (path in paths)
+        {
+            var png:Bytes = files.get(path);
+            if (png == null) png = files.get(path.toLowerCase());
+            BitmapData.loadFromBytes(png).onComplete(function(bitmap:BitmapData)
+            {
+                if (bitmap != null)
+                {
+                    var graphic = FlxGraphic.fromBitmapData(bitmap, false, "playground-mod:" + path);
+                    graphics.set(path, graphic);
+                    graphics.set(path.toLowerCase(), graphic);
+                }
+                else failed++;
+                pending--;
+                if (pending == 0)
+                    callback(true, "Imported " + characterIds.length + " characters; " + (paths.length - failed) + " atlases loaded.");
+            }).onError(function(error:Dynamic)
+            {
+                failed++;
+                pending--;
+                if (pending == 0)
+                    callback(true, "Imported " + characterIds.length + " characters; " + (paths.length - failed) + " atlases loaded.");
+            });
+        }
+    }
+}
+'''
+mod_store.write_text(mod_store_source, encoding="utf-8")
+
 mods_file = root / "source" / "states" / "PlaygroundModsState.hx"
 mods_source = r'''package states;
 
