@@ -715,7 +715,10 @@ class PlaygroundSandboxState extends MusicBeatState
             cameraTarget.y += offsetValue(actor.cameraPosition, 1) + offsetValue(data == null ? null : data.camera_opponent, 1);
         }
 
-        FlxG.camera.follow(cameraTarget, FlxCameraFollowStyle.LOCKON, 0.04);
+        // Playground is a fixed sandbox: disable follow interpolation so the camera
+        // cannot keep drifting after repeated focus changes.
+        FlxG.camera.follow(null);
+        FlxG.camera.scroll.set(cameraTarget.x - FlxG.width * 0.5, cameraTarget.y - FlxG.height * 0.5);
     }
 
     private function refreshLabels():Void
@@ -760,10 +763,11 @@ class PlaygroundSandboxState extends MusicBeatState
     {
         var actor:Character = isPlayerOne ? playerOne : playerTwo;
         if (actor == null) return;
+        actor.holdTimer = 0;
         actor.playAnim("sing" + direction, true);
 
-        if (isPlayerOne) playerOneSingTimer = 0.42;
-        else playerTwoSingTimer = 0.42;
+        if (isPlayerOne) playerOneSingTimer = 0.55;
+        else playerTwoSingTimer = 0.55;
 
         actionLabel.text = (isPlayerOne ? "PLAYER 1" : "PLAYER 2") + " / SING " + direction;
         focusCamera(isPlayerOne);
@@ -809,12 +813,22 @@ class PlaygroundSandboxState extends MusicBeatState
         if (playerOneSingTimer > 0)
         {
             playerOneSingTimer -= elapsed;
-            if (playerOneSingTimer <= 0 && playerOne != null) playerOne.dance();
+            if (playerOneSingTimer <= 0 && playerOne != null)
+            {
+                playerOne.holdTimer = 0;
+                playerOne.specialAnim = false;
+                playerOne.dance();
+            }
         }
         if (playerTwoSingTimer > 0)
         {
             playerTwoSingTimer -= elapsed;
-            if (playerTwoSingTimer <= 0 && playerTwo != null) playerTwo.dance();
+            if (playerTwoSingTimer <= 0 && playerTwo != null)
+            {
+                playerTwo.holdTimer = 0;
+                playerTwo.specialAnim = false;
+                playerTwo.dance();
+            }
         }
 
         super.update(elapsed);
