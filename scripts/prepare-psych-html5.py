@@ -1233,11 +1233,11 @@ mods_file.write_text(mods_source, encoding="utf-8")
 character = root / "source" / "objects" / "Character.hx"
 character_source = character.read_text(encoding="utf-8")
 if "import backend.PlaygroundModStore;" not in character_source:
-    if "import backend.Paths;" not in character_source:
-        raise SystemExit("Could not find Character.hx backend.Paths import")
+    if "import backend.Song;" not in character_source:
+        raise SystemExit("Could not find Character.hx backend.Song import")
     character_source = character_source.replace(
-        "import backend.Paths;",
-        "import backend.Paths;\nimport backend.PlaygroundModStore;",
+        "import backend.Song;",
+        "import backend.Song;\nimport backend.PlaygroundModStore;",
         1
     )
 character_source = character_source.replace(
