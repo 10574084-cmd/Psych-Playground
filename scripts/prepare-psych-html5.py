@@ -141,7 +141,7 @@ for method, fallback in (
     match = pattern.search(renderer_source)
     if not match:
         raise SystemExit(f"Could not locate flxanimate {method} method")
-    if "#if (js && html5)" not in match.group(2):
+    if not match.group(2).lstrip().startswith("#if (js && html5)"):
         whole = match.group(0)
         signature = whole[:whole.find("{") + 1]
         indent = match.group(1)
