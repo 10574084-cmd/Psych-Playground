@@ -27,32 +27,8 @@ elif new_state not in source:
     raise SystemExit("Could not locate the initialState declaration in source/Main.hx")
 main.write_text(source, encoding="utf-8")
 
-# Freeplay assumes at least one week was loaded. Some HTML5 asset manifests can omit
-# week metadata even though the vanilla charts are present, so seed the starter week
-# before Freeplay indexes songs[0]. This keeps PLAY usable without a desktop file loader.
-freeplay = root / "source" / "states" / "FreeplayState.hx"
-freeplay_source = freeplay.read_text(encoding="utf-8")
-freeplay_anchor = "\t\tMods.loadTopMod();"
-freeplay_fallback = """\t\tif (songs.length == 0)
-\t\t{
-\t\t\tvar fallbackWeekName:String = "playgroundDefault";
-\t\t\tvar fallbackWeek:WeekData = new WeekData(WeekData.createWeekFile(), fallbackWeekName);
-\t\t\tWeekData.weeksLoaded.set(fallbackWeekName, fallbackWeek);
-\t\t\tWeekData.weeksList = [fallbackWeekName];
-\t\t\tWeekData.setDirectoryFromWeek(fallbackWeek);
-\t\t\tfor (song in fallbackWeek.songs)
-\t\t\t{
-\t\t\t\tvar colors:Array<Int> = song[2];
-\t\t\t\taddSong(song[0], 0, song[1], FlxColor.fromRGB(colors[0], colors[1], colors[2]));
-\t\t\t}
-\t\t\ttrace("[Playground] Week metadata unavailable; using the built-in starter week.");
-\t\t}
-\n"""
-if freeplay_fallback.strip() not in freeplay_source:
-    if freeplay_anchor not in freeplay_source:
-        raise SystemExit("Could not locate FreeplayState Mods.loadTopMod() anchor")
-    freeplay_source = freeplay_source.replace(freeplay_anchor, freeplay_fallback + freeplay_anchor, 1)
-    freeplay.write_text(freeplay_source, encoding="utf-8")
+# FreeplayState owns its normal week/song discovery. Do not synthesize WeekData here:
+# an incomplete synthetic week can leave Freeplay with invalid selection state.
 
 # Native Playground menu: this replaces the external HTML shell and the default title/menu states.
 main_source = main.read_text(encoding="utf-8")
@@ -213,7 +189,7 @@ class PlaygroundMenuState extends MusicBeatState
         {
             case 0:
                 PlayState.isStoryMode = false;
-                MusicBeatState.switchState(new FreeplayState());
+                LoadingState.loadAndSwitchState(new FreeplayState());
 
             case 1:
                 OptionsState.onPlayState = false;
