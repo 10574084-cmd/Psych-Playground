@@ -801,6 +801,7 @@ mod_store_source = r'''package backend;
 
 import haxe.crypto.Base64;
 import haxe.ds.StringMap;
+import haxe.Timer;
 import haxe.io.Bytes;
 import haxe.io.BytesInput;
 import haxe.zip.Reader;
@@ -814,6 +815,12 @@ class PlaygroundModStore
     public static var characterIds:Array<String> = [];
     private static var files:StringMap<Bytes> = new StringMap<Bytes>();
     private static var graphics:StringMap<FlxGraphic> = new StringMap<FlxGraphic>();
+
+    private static inline var MAX_ARCHIVE_BYTES:Int = 52428800;
+    private static inline var MAX_ENTRIES:Int = 2500;
+    private static inline var MAX_CHARACTER_JSON_BYTES:Int = 8388608;
+    private static inline var MAX_SELECTED_ASSET_BYTES:Int = 100663296;
+    private static inline var MAX_DECODED_PIXELS:Int = 18000000;
 
     public static function getText(path:String):String
     {
@@ -841,7 +848,13 @@ class PlaygroundModStore
             callback(false, "The selected file is empty or is not a ZIP archive.");
             return;
         }
+        if (bytes.length > MAX_ARCHIVE_BYTES)
+        {
+            callback(false, "This ZIP is larger than the 50 MB browser import limit.");
+            return;
+        }
 
+        // Validate character JSON only. PNGs are decoded after the page reload.
         parseArchive(bytes, function(success:Bool, message:String)
         {
             if (!success)
@@ -851,7 +864,7 @@ class PlaygroundModStore
             }
             activeModName = name;
             saveArchive(bytes, name, callback);
-        });
+        }, false);
     }
 
     public static function loadStored(callback:Bool->String->Void):Void
@@ -869,11 +882,24 @@ class PlaygroundModStore
                     callback(false, "No imported mod.");
                     return;
                 }
+
                 activeModName = Reflect.field(record, "name");
                 try
                 {
-                    var archive:String = Reflect.field(record, "archive");
-                    parseArchive(Base64.decode(archive), callback);
+                    var stored:Dynamic = Reflect.field(record, "archive");
+                    var archiveBytes:Bytes;
+                    // Legacy saves used Base64. New saves use the typed byte array.
+                    if (Std.isOfType(stored, String))
+                        archiveBytes = Base64.decode(cast stored);
+                    else
+                        archiveBytes = Bytes.ofData(cast stored);
+
+                    if (archiveBytes.length > MAX_ARCHIVE_BYTES)
+                    {
+                        callback(false, "The saved ZIP exceeds the browser import limit.");
+                        return;
+                    }
+                    parseArchive(archiveBytes, callback, true);
                 }
                 catch (error:Dynamic)
                 {
@@ -915,8 +941,8 @@ class PlaygroundModStore
         openDatabase(function(db:Dynamic)
         {
             var tx:Dynamic = db.transaction(["mods"], "readwrite");
-            tx.objectStore("mods").put({name: name, archive: Base64.encode(bytes)}, "active");
-            tx.oncomplete = function(_) callback(true, "Mod imported and saved.");
+            tx.objectStore("mods").put({name: name, archive: bytes.getData()}, "active");
+            tx.oncomplete = function(_) callback(true, "Mod saved. The Playground will reload once.");
             tx.onerror = function(_) callback(false, "Browser storage could not save this ZIP.");
         }, function(error:String) callback(false, error));
         #else
@@ -954,13 +980,13 @@ class PlaygroundModStore
     private static function normalizePath(raw:String):String
     {
         if (raw == null) return null;
-        var path = raw.split("\\").join("/");
+        var path = raw.split(String.fromCharCode(92)).join("/");
         while (path.startsWith("/")) path = path.substr(1);
         var pieces = path.split("/");
         for (piece in pieces)
             if (piece == "..") return null;
 
-        var roots = ["characters", "images", "stages", "data", "songs", "weeks", "fonts"];
+        var roots = ["characters", "images"];
         var first = -1;
         for (i in 0...pieces.length)
         {
@@ -974,119 +1000,235 @@ class PlaygroundModStore
         return pieces.slice(first).join("/");
     }
 
-    private static function parseArchive(bytes:Bytes, callback:Bool->String->Void):Void
+    private static function inflateEntry(entry:Dynamic):Bytes
+    {
+        var data:Bytes = cast entry.data;
+        if (data == null) throw "ZIP entry has no data.";
+        var size:Int = entry.fileSize;
+        if (size < 0 || size > MAX_SELECTED_ASSET_BYTES)
+            throw "ZIP entry is larger than the allowed extraction limit.";
+
+        if (entry.compressed)
+        {
+            var inflater = new haxe.zip.InflateImpl(new BytesInput(data), false, false);
+            var uncompressed = Bytes.alloc(size);
+            var written = inflater.readBytes(uncompressed, 0, size);
+            if (written != size)
+                throw "Incomplete ZIP entry: " + entry.fileName;
+            return uncompressed;
+        }
+        if (data.length != size)
+            throw "Invalid ZIP entry length: " + entry.fileName;
+        return data;
+    }
+
+    private static function atlasBase(image:String):String
+    {
+        if (image == null || image.length == 0) return null;
+        var base = image.split(String.fromCharCode(92)).join("/");
+        while (base.startsWith("/")) base = base.substr(1);
+        if (base.startsWith("images/")) base = base.substr("images/".length);
+
+        var lower = base.toLowerCase();
+        for (extension in [".png", ".xml", ".txt", ".json"])
+        {
+            if (lower.endsWith(extension))
+            {
+                base = base.substr(0, base.length - extension.length);
+                break;
+            }
+        }
+        return normalizePath("images/" + base);
+    }
+
+    private static function parseArchive(bytes:Bytes, callback:Bool->String->Void, preloadImages:Bool = true):Void
     {
         try
         {
+            if (bytes == null || bytes.length < 4 || bytes.length > MAX_ARCHIVE_BYTES)
+                throw "ZIP is empty or exceeds the 50 MB import limit.";
+
             files = new StringMap<Bytes>();
             graphics = new StringMap<FlxGraphic>();
             characterIds = [];
 
-            var entries = Reader.readZip(new BytesInput(bytes));
+            // Keep compressed entries in memory, but only extract character JSON
+            // and graphics that those characters actually reference.
+            var entries:Array<Dynamic> = [for (entry in Reader.readZip(new BytesInput(bytes))) entry];
+            if (entries.length > MAX_ENTRIES)
+                throw "This ZIP contains too many files (maximum 2500).";
+
+            var available:StringMap<Dynamic> = new StringMap<Dynamic>();
+            var characterEntries:Array<Dynamic> = [];
             for (entry in entries)
             {
                 if (entry.fileName == null || entry.fileName.endsWith("/") || entry.data == null) continue;
                 var path = normalizePath(entry.fileName);
                 if (path == null) continue;
-
-                var data:Bytes = entry.data;
-                if (entry.compressed)
-                {
-                    // ZIP method 8 stores a raw DEFLATE stream, without a zlib
-                    // header. Use Haxe's pure inflater in raw mode for HTML5.
-                    var inflater = new haxe.zip.InflateImpl(new BytesInput(data), false, false);
-                    var uncompressed = Bytes.alloc(entry.fileSize);
-                    var written = inflater.readBytes(uncompressed, 0, entry.fileSize);
-                    if (written != entry.fileSize)
-                        throw "Incomplete ZIP entry: " + entry.fileName;
-                    data = uncompressed;
-                }
-                files.set(path, data);
-                files.set(path.toLowerCase(), data);
+                available.set(path.toLowerCase(), {path: path, entry: entry});
 
                 var lower = path.toLowerCase();
                 if (lower.startsWith("characters/") && lower.endsWith(".json"))
                 {
                     var id = path.substring("characters/".length, path.length - 5);
                     if (id.indexOf("/") < 0 && characterIds.indexOf(id) < 0)
+                    {
                         characterIds.push(id);
+                        characterEntries.push({path: path, entry: entry});
+                    }
                 }
             }
 
-            if (characterIds.length == 0)
+            if (characterEntries.length == 0)
             {
-                callback(false, "No characters/*.json files were found. Choose a Psych Engine mod ZIP.");
+                callback(false, "No characters/*.json files were found. Choose a Psych Engine character mod ZIP.");
                 return;
             }
-            preloadCharacterImages(callback);
+
+            var wanted:StringMap<Bool> = new StringMap<Bool>();
+            var cursor:Int = 0;
+            var jsonBytes:Int = 0;
+            var parseJsonChunk:Void->Void = null;
+            parseJsonChunk = function():Void
+            {
+                try
+                {
+                    var stop = Std.int(Math.min(cursor + 6, characterEntries.length));
+                    while (cursor < stop)
+                    {
+                        var record:Dynamic = characterEntries[cursor++];
+                        var path:String = record.path;
+                        var entry:Dynamic = record.entry;
+                        var size:Int = entry.fileSize;
+                        if (size < 0 || size > MAX_CHARACTER_JSON_BYTES)
+                            throw "A character JSON is larger than the 8 MB limit.";
+                        jsonBytes += size;
+                        if (jsonBytes > MAX_CHARACTER_JSON_BYTES)
+                            throw "Character JSON files exceed the 8 MB total limit.";
+
+                        var data = inflateEntry(entry);
+                        files.set(path, data);
+                        files.set(path.toLowerCase(), data);
+
+                        try
+                        {
+                            var json:Dynamic = haxe.Json.parse(data.toString());
+                            var image:String = Reflect.field(json, "image");
+                            var base = atlasBase(image);
+                            if (base != null)
+                            {
+                                for (extension in [".png", ".xml", ".txt", ".json"])
+                                    wanted.set((base + extension).toLowerCase(), true);
+                            }
+                        }
+                        catch (jsonError:Dynamic)
+                        {
+                            trace("[Playground Mods] Invalid character JSON " + path + ": " + jsonError);
+                        }
+                    }
+
+                    if (cursor < characterEntries.length)
+                    {
+                        Timer.delay(parseJsonChunk, 1);
+                        return;
+                    }
+
+                    var assetRecords:Array<Dynamic> = [];
+                    var totalAssetBytes:Int = 0;
+                    for (path in wanted.keys())
+                    {
+                        var record:Dynamic = available.get(path);
+                        if (record == null) continue;
+                        var entry:Dynamic = record.entry;
+                        var size:Int = entry.fileSize;
+                        if (size < 0 || size > MAX_SELECTED_ASSET_BYTES)
+                            throw "A referenced character atlas is too large.";
+                        totalAssetBytes += size;
+                        if (totalAssetBytes > MAX_SELECTED_ASSET_BYTES)
+                            throw "Referenced character atlases exceed the 96 MB extraction limit.";
+                        assetRecords.push(record);
+                    }
+
+                    if (!preloadImages)
+                    {
+                        callback(true, "Validated " + characterIds.length + " character JSON files. Assets will load after the page reload.");
+                        return;
+                    }
+
+                    // Decode one PNG at a time instead of launching all image decoders together.
+                    var assetIndex:Int = 0;
+                    var decodedPixels:Int = 0;
+                    var failedAtlases:Int = 0;
+                    var loadNextAsset:Void->Void = null;
+                    loadNextAsset = function():Void
+                    {
+                        if (assetIndex >= assetRecords.length)
+                        {
+                            callback(true, "Loaded " + characterIds.length + " characters; " + failedAtlases + " atlas files could not be decoded.");
+                            return;
+                        }
+
+                        var record:Dynamic = assetRecords[assetIndex++];
+                        var path:String = record.path;
+                        var entry:Dynamic = record.entry;
+                        try
+                        {
+                            var data = inflateEntry(entry);
+                            if (path.toLowerCase().endsWith(".png"))
+                            {
+                                BitmapData.loadFromBytes(ByteArray.fromBytes(data)).onComplete(function(bitmap:BitmapData)
+                                {
+                                    var pixels:Int = bitmap == null ? 0 : bitmap.width * bitmap.height;
+                                    if (bitmap == null || decodedPixels + pixels > MAX_DECODED_PIXELS)
+                                    {
+                                        if (bitmap != null) bitmap.dispose();
+                                        failedAtlases++;
+                                    }
+                                    else
+                                    {
+                                        decodedPixels += pixels;
+                                        var graphic = FlxGraphic.fromBitmapData(bitmap, false, "playground-mod:" + path);
+                                        graphics.set(path, graphic);
+                                        graphics.set(path.toLowerCase(), graphic);
+                                    }
+                                    Timer.delay(loadNextAsset, 1);
+                                }).onError(function(error:Dynamic)
+                                {
+                                    failedAtlases++;
+                                    trace("[Playground Mods] Could not decode " + path + ": " + error);
+                                    Timer.delay(loadNextAsset, 1);
+                                });
+                            }
+                            else
+                            {
+                                files.set(path, data);
+                                files.set(path.toLowerCase(), data);
+                                Timer.delay(loadNextAsset, 1);
+                            }
+                        }
+                        catch (error:Dynamic)
+                        {
+                            failedAtlases++;
+                            trace("[Playground Mods] Could not extract " + path + ": " + error);
+                            Timer.delay(loadNextAsset, 1);
+                        }
+                    };
+                    loadNextAsset();
+                }
+                catch (error:Dynamic)
+                {
+                    callback(false, "Could not extract this ZIP: " + Std.string(error));
+                }
+            };
+            parseJsonChunk();
         }
         catch (error:Dynamic)
         {
-            callback(false, "Could not extract this ZIP: " + Std.string(error));
-        }
-    }
-
-    private static function preloadCharacterImages(callback:Bool->String->Void):Void
-    {
-        var needed:StringMap<Bool> = new StringMap<Bool>();
-        for (id in characterIds)
-        {
-            var jsonText = getText("characters/" + id + ".json");
-            if (jsonText == null) continue;
-            try
-            {
-                var json:Dynamic = haxe.Json.parse(jsonText);
-                var image:String = Reflect.field(json, "image");
-                if (image != null && image.length > 0)
-                {
-                    var path = image;
-                    if (!path.startsWith("images/")) path = "images/" + path;
-                    if (!path.toLowerCase().endsWith(".png")) path += ".png";
-                    if (files.exists(path)) needed.set(path, true);
-                    else if (files.exists(path.toLowerCase())) needed.set(path.toLowerCase(), true);
-                }
-            }
-            catch (error:Dynamic)
-            {
-                trace("[Playground Mods] Invalid character JSON " + id + ": " + error);
-            }
-        }
-
-        var paths:Array<String> = [for (path in needed.keys()) path];
-        if (paths.length == 0)
-        {
-            callback(true, "Imported " + characterIds.length + " character definitions; atlas PNGs were not found.");
-            return;
-        }
-
-        var pending:Int = paths.length;
-        var failed:Int = 0;
-        for (path in paths)
-        {
-            var png:Bytes = files.get(path);
-            if (png == null) png = files.get(path.toLowerCase());
-            BitmapData.loadFromBytes(ByteArray.fromBytes(png)).onComplete(function(bitmap:BitmapData)
-            {
-                if (bitmap != null)
-                {
-                    var graphic = FlxGraphic.fromBitmapData(bitmap, false, "playground-mod:" + path);
-                    graphics.set(path, graphic);
-                    graphics.set(path.toLowerCase(), graphic);
-                }
-                else failed++;
-                pending--;
-                if (pending == 0)
-                    callback(true, "Imported " + characterIds.length + " characters; " + (paths.length - failed) + " atlases loaded.");
-            }).onError(function(error:Dynamic)
-            {
-                failed++;
-                pending--;
-                if (pending == 0)
-                    callback(true, "Imported " + characterIds.length + " characters; " + (paths.length - failed) + " atlases loaded.");
-            });
+            callback(false, "Could not read this ZIP: " + Std.string(error));
         }
     }
 }
+
 '''
 mod_store.write_text(mod_store_source, encoding="utf-8")
 
@@ -1173,6 +1315,11 @@ class PlaygroundModsState extends MusicBeatState
     private function onZipSelected(event:Event):Void
     {
         fileRef.removeEventListener(Event.SELECT, onZipSelected);
+        if (fileRef.size > 52428800)
+        {
+            statusText.text = "IMPORT FAILED: ZIP files must be 50 MB or smaller.";
+            return;
+        }
         fileRef.addEventListener(Event.COMPLETE, onZipLoaded);
         statusText.text = "READING " + fileRef.name + "...";
         busy = true;
