@@ -1047,6 +1047,7 @@ mod_store.write_text(mod_store_source, encoding="utf-8")
 mods_file = root / "source" / "states" / "PlaygroundModsState.hx"
 mods_source = r'''package states;
 
+import flixel.text.FlxText.FlxTextAlign;
 import openfl.net.FileReference;
 import openfl.net.FileFilter;
 import openfl.events.Event;
