@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Apply minimal, repeatable browser-target patches to Psych Engine 0.7.3."""
 from pathlib import Path
+import re
 import sys
 
 root = Path(sys.argv[1]).resolve()
@@ -56,21 +57,17 @@ editor = root / "source" / "states" / "editors" / "CharacterEditorState.hx"
 editor_source = editor.read_text(encoding="utf-8")
 old_editor = (
     "\t\tfor (folder in foldersToCheck)\n"
-    "\t\t\tfor (file in FileSystem.readDirectory(folder))"
+    "\t\t\tfor (file in FileSystem.readDirectory(folder))\n"
+    "\t\t\t\tif(file.toLowerCase().endsWith('.json'))\n"
+    "\t\t\t\t{\n"
+    "\t\t\t\t\tvar charToCheck:String = file.substr(0, file.length - 5);\n"
+    "\t\t\t\t\tif(!characterList.contains(charToCheck))\n"
+    "\t\t\t\t\t\tcharacterList.push(charToCheck);\n"
+    "\t\t\t\t}"
 )
-new_editor = (
-    "#if sys\n"
-    "\t\tfor (folder in foldersToCheck)\n"
-    "\t\t\tfor (file in FileSystem.readDirectory(folder))"
-)
+new_editor = "#if sys\n" + old_editor + "\n#end"
 if old_editor in editor_source:
     editor_source = editor_source.replace(old_editor, new_editor, 1)
-    marker = "\n\t\t}\n"
-    start = editor_source.index(new_editor)
-    close = editor_source.find(marker, start)
-    if close < 0:
-        raise SystemExit("Could not close CharacterEditorState file-system guard")
-    editor_source = editor_source[:close] + "\n\t\t#end" + editor_source[close:]
 elif new_editor not in editor_source:
     raise SystemExit("Could not locate CharacterEditorState directory scan")
 editor.write_text(editor_source, encoding="utf-8")
