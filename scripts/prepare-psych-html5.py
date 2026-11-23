@@ -519,29 +519,24 @@ class PlaygroundSandboxState extends MusicBeatState
         title.setFormat(Paths.font("vcr.ttf"), 36, FlxColor.WHITE, FlxTextAlign.LEFT);
         add(title);
 
-        var sidePanel:FlxSprite = new FlxSprite(24, 112).makeGraphic(360, 395, FlxColor.BLACK);
-        sidePanel.alpha = 0.66;
-        add(sidePanel);
+        var infoStart:Float = FlxG.width * 0.37;
 
-        playerOneLabel = new FlxText(44, 132, 325, "", 19);
-        playerOneLabel.setFormat(Paths.font("vcr.ttf"), 19, FlxColor.CYAN, FlxTextAlign.LEFT);
+        playerOneLabel = new FlxText(infoStart, 20, FlxG.width * 0.18, "", 15);
+        playerOneLabel.setFormat(Paths.font("vcr.ttf"), 15, FlxColor.CYAN, FlxTextAlign.LEFT);
         add(playerOneLabel);
 
-        playerTwoLabel = new FlxText(44, 166, 325, "", 19);
-        playerTwoLabel.setFormat(Paths.font("vcr.ttf"), 19, FlxColor.LIME, FlxTextAlign.LEFT);
+        playerTwoLabel = new FlxText(FlxG.width * 0.56, 20, FlxG.width * 0.18, "", 15);
+        playerTwoLabel.setFormat(Paths.font("vcr.ttf"), 15, FlxColor.LIME, FlxTextAlign.LEFT);
         add(playerTwoLabel);
 
-        stageLabel = new FlxText(44, 211, 325, "", 17);
-        stageLabel.setFormat(Paths.font("vcr.ttf"), 17, FlxColor.WHITE, FlxTextAlign.LEFT);
+        stageLabel = new FlxText(FlxG.width * 0.75, 20, FlxG.width * 0.23, "", 14);
+        stageLabel.setFormat(Paths.font("vcr.ttf"), 14, FlxColor.WHITE, FlxTextAlign.LEFT);
         add(stageLabel);
 
-        var controlsTitle:FlxText = new FlxText(44, 252, 310, "PLAYER CONTROLS", 18);
-        controlsTitle.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.YELLOW, FlxTextAlign.LEFT);
-        add(controlsTitle);
-
-        var controlsText:FlxText = new FlxText(44, 285, 325,
-            "P1   ARROW KEYS   /   F G: CHARACTER\nP2   W A S D       /   U I: CHARACTER\nQ / E   CHANGE STAGE\nM       MODS\nESC    MAIN MENU\n\nCUSTOMIZE BOTH PLAYERS IN OPTIONS > CONTROLS", 14);
-        controlsText.setFormat(Paths.font("vcr.ttf"), 14, FlxColor.WHITE, FlxTextAlign.LEFT);
+        var controlsText:FlxText = new FlxText(24, FlxG.height - 78, FlxG.width - 48,
+            "P1: ARROWS  |  P2: W A S D  |  F/G: P1 CHARACTER  |  U/I: P2 CHARACTER  |  Q/E: STAGE  |  M: MODS", 12);
+        controlsText.setFormat(Paths.font("vcr.ttf"), 12, FlxColor.WHITE, FlxTextAlign.CENTER);
+        controlsText.alpha = 0.88;
         add(controlsText);
 
         actionLabel = new FlxText(24, FlxG.height - 48, FlxG.width - 48, "P1: ARROWS     P2: W A S D", 18);
