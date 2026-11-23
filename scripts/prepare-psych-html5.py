@@ -30,6 +30,33 @@ main.write_text(source, encoding="utf-8")
 # FreeplayState owns its normal week/song discovery. Do not synthesize WeekData here:
 # an incomplete synthetic week can leave Freeplay with invalid selection state.
 
+# Restore a valid starter week if HTML5 did not expose weekList/week JSON assets.
+freeplay = root / "source" / "states" / "FreeplayState.hx"
+freeplay_source = freeplay.read_text(encoding="utf-8")
+freeplay_anchor = "\\t\\tMods.loadTopMod();"
+freeplay_fallback = """\\t\\tif (songs.length == 0)
+\\t\\t{
+\\t\\t\\tvar fallbackWeekName:String = "playgroundDefault";
+\\t\\t\\tvar fallbackWeek:WeekData = new WeekData(WeekData.createWeekFile(), fallbackWeekName);
+\\t\\t\\tfallbackWeek.weekBefore = "";
+\\t\\t\\tWeekData.weeksLoaded.set(fallbackWeekName, fallbackWeek);
+\\t\\t\\tWeekData.weeksList = [fallbackWeekName];
+\\t\\t\\tWeekData.setDirectoryFromWeek(fallbackWeek);
+\\t\\t\\tfor (song in fallbackWeek.songs)
+\\t\\t\\t{
+\\t\\t\\t\\tvar colors:Array<Int> = cast song[2];
+\\t\\t\\t\\tif (colors == null || colors.length < 3) colors = [146, 113, 253];
+\\t\\t\\t\\taddSong(Std.string(song[0]), 0, Std.string(song[1]), FlxColor.fromRGB(colors[0], colors[1], colors[2]));
+\\t\\t\\t}
+\\t\\t\\ttrace("[Playground] Week metadata unavailable; loaded built-in starter songs.");
+\\t\\t}
+\\n"""
+if freeplay_fallback.strip() not in freeplay_source:
+    if freeplay_anchor not in freeplay_source:
+        raise SystemExit("Could not locate FreeplayState Mods.loadTopMod() anchor")
+    freeplay_source = freeplay_source.replace(freeplay_anchor, freeplay_fallback + freeplay_anchor, 1)
+    freeplay.write_text(freeplay_source, encoding="utf-8")
+
 # Native Playground menu: this replaces the external HTML shell and the default title/menu states.
 main_source = main.read_text(encoding="utf-8")
 if "import states.PlaygroundMenuState;" not in main_source:
@@ -189,7 +216,7 @@ class PlaygroundMenuState extends MusicBeatState
         {
             case 0:
                 PlayState.isStoryMode = false;
-                LoadingState.loadAndSwitchState(new FreeplayState());
+                MusicBeatState.switchState(new PlaygroundFreeplayState());
 
             case 1:
                 OptionsState.onPlayState = false;
@@ -206,6 +233,75 @@ class PlaygroundMenuState extends MusicBeatState
 }
 '''
 menu_file.write_text(menu_source, encoding="utf-8")
+
+# Retain Psych Freeplay, but turn otherwise opaque browser crashes into a readable error screen.
+freeplay_wrapper = root / "source" / "states" / "PlaygroundFreeplayState.hx"
+freeplay_wrapper_source = r'''package states;
+
+class PlaygroundFreeplayState extends FreeplayState
+{
+    private var playgroundFailed:Bool = false;
+
+    override function create():Void
+    {
+        try
+        {
+            super.create();
+        }
+        catch (error:Dynamic)
+        {
+            showPlaygroundError(error);
+        }
+    }
+
+    override function update(elapsed:Float):Void
+    {
+        if (playgroundFailed)
+        {
+            if (controls.BACK || FlxG.keys.justPressed.ESCAPE)
+                MusicBeatState.switchState(new PlaygroundMenuState());
+            return;
+        }
+
+        try
+        {
+            super.update(elapsed);
+        }
+        catch (error:Dynamic)
+        {
+            showPlaygroundError(error);
+        }
+    }
+
+    private function showPlaygroundError(error:Dynamic):Void
+    {
+        if (playgroundFailed) return;
+        playgroundFailed = true;
+        var message:String = Std.string(error);
+        trace("[Playground Freeplay error] " + message);
+
+        var shade:FlxSprite = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, FlxColor.BLACK);
+        shade.alpha = 0.92;
+        add(shade);
+
+        var title:FlxText = new FlxText(45, 65, FlxG.width - 90, "FREEPLAY COULD NOT START", 34);
+        title.setFormat(Paths.font("vcr.ttf"), 34, FlxColor.RED, CENTER);
+        add(title);
+
+        var detail:FlxText = new FlxText(70, 160, FlxG.width - 140, message, 20);
+        detail.setFormat(Paths.font("vcr.ttf"), 20, FlxColor.WHITE, CENTER);
+        detail.borderStyle = FlxTextBorderStyle.OUTLINE;
+        detail.borderColor = FlxColor.BLACK;
+        detail.borderSize = 2;
+        add(detail);
+
+        var hint:FlxText = new FlxText(0, FlxG.height - 80, FlxG.width, "ESC — BACK TO PLAYGROUND MENU", 18);
+        hint.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.CYAN, CENTER);
+        add(hint);
+    }
+}
+'''
+freeplay_wrapper.write_text(freeplay_wrapper_source, encoding="utf-8")
 
 mods_file = root / "source" / "states" / "PlaygroundModsState.hx"
 mods_source = r'''package states;
