@@ -56,12 +56,12 @@ jobs:
         working-directory: psych-engine
         run: haxelib run lime build Project.xml html5 -release
 
-      - name: Put the compiled engine inside the Pages site
+      - name: Publish the engine itself at the Pages root
         run: |
           test -f psych-engine/export/release/html5/bin/index.html
-          rm -rf playground/site/engine
-          mkdir -p playground/site/engine
-          cp -R psych-engine/export/release/html5/bin/. playground/site/engine/
+          rm -rf playground/site
+          mkdir -p playground/site
+          cp -R psych-engine/export/release/html5/bin/. playground/site/
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
