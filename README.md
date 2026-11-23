@@ -10,7 +10,7 @@ FNF Playground Psych uses the **real Psych Engine 0.7.3 Haxe source**, compiled 
 - Options and the ZIP character library remain in the Playground shell.
 
 ## Build pipeline
-The workflow checks out the exact Psych Engine 0.7.3 source commit `2dfa27773a3668e0c1b043a3fb4348942c8a6fb3`, installs its compatible Haxe libraries, patches only the HTML5 entry point and desktop-only Discord integration, compiles with Lime for the `html5` target, then deploys the generated engine files with GitHub Pages.
+The workflow checks out the exact Psych Engine 0.7.3 source commit `2dfa27773a3668e0c1b043a3fb4348942c8a6fb3`, installs the Haxe 4.3.2 / HaxeFlixel 5.5 dependency set recorded for the Psych 0.7.x generation, patches only the HTML5 entry point and desktop-only Discord integration, compiles with Lime for the `html5` target, then deploys the generated engine files with GitHub Pages.
 
 The engine source ZIP supplied for this project corresponds to the official `0.7.3` tag and the same commit.
 
