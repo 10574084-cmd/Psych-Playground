@@ -55,6 +55,12 @@ for relative in (
 ):
     route_file = root / relative
     route_source = route_file.read_text(encoding="utf-8")
+    if relative == "source/options/OptionsState.hx" and "import states.PlaygroundMenuState;" not in route_source:
+        route_source = route_source.replace(
+            "import states.MainMenuState;",
+            "import states.MainMenuState;\\nimport states.PlaygroundMenuState;",
+            1
+        )
     route_source = route_source.replace(
         "MusicBeatState.switchState(new MainMenuState());",
         "MusicBeatState.switchState(new PlaygroundMenuState());"
