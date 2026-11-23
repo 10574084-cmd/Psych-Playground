@@ -62,6 +62,35 @@ jobs:
           rm -rf playground/site
           mkdir -p playground/site
           cp -R psych-engine/export/release/html5/bin/. playground/site/
+          # Give every build a unique JS URL so the browser cannot reuse an
+          # older cached PsychEngine.js after GitHub Pages deploys new code.
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          site = Path("playground/site")
+          build_id = os.environ["GITHUB_SHA"][:12]
+          old_js = site / "PsychEngine.js"
+          versioned_js = site / f"PsychEngine-{build_id}.js"
+          if not old_js.exists():
+              raise SystemExit("Compiled PsychEngine.js was not found")
+          old_js.rename(versioned_js)
+
+          index = site / "index.html"
+          html = index.read_text(encoding="utf-8")
+          old_src = 'src="./PsychEngine.js"'
+          new_src = f'src="./{versioned_js.name}"'
+          if old_src not in html:
+              raise SystemExit("Could not find PsychEngine.js script tag in index.html")
+          html = html.replace(old_src, new_src, 1)
+          html = html.replace(
+              "<title>Friday Night Funkin': Psych Engine</title>",
+              f"<title>Psych Playground ({build_id})</title>",
+              1
+          )
+          index.write_text(html, encoding="utf-8")
+          print(f"Published cache-busted engine bundle: {versioned_js.name}")
+          PY
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
