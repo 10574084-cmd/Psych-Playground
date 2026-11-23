@@ -771,6 +771,7 @@ import haxe.io.BytesInput;
 import haxe.zip.Reader;
 import flixel.graphics.FlxGraphic;
 import openfl.display.BitmapData;
+import openfl.utils.ByteArray;
 
 class PlaygroundModStore
 {
@@ -1019,7 +1020,7 @@ class PlaygroundModStore
         {
             var png:Bytes = files.get(path);
             if (png == null) png = files.get(path.toLowerCase());
-            BitmapData.loadFromBytes(png).onComplete(function(bitmap:BitmapData)
+            BitmapData.loadFromBytes(ByteArray.fromBytes(png)).onComplete(function(bitmap:BitmapData)
             {
                 if (bitmap != null)
                 {
@@ -1231,6 +1232,14 @@ mods_file.write_text(mods_source, encoding="utf-8")
 # Resolve imported characters from the browser ZIP store in Character's constructor.
 character = root / "source" / "objects" / "Character.hx"
 character_source = character.read_text(encoding="utf-8")
+if "import backend.PlaygroundModStore;" not in character_source:
+    if "import backend.Paths;" not in character_source:
+        raise SystemExit("Could not find Character.hx backend.Paths import")
+    character_source = character_source.replace(
+        "import backend.Paths;",
+        "import backend.Paths;\nimport backend.PlaygroundModStore;",
+        1
+    )
 character_source = character_source.replace(
     "if (!Assets.exists(path))",
     "if (!Assets.exists(path) && PlaygroundModStore.getText(characterPath) == null)",
