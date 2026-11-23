@@ -33,23 +33,23 @@ main.write_text(source, encoding="utf-8")
 # Restore a valid starter week if HTML5 did not expose weekList/week JSON assets.
 freeplay = root / "source" / "states" / "FreeplayState.hx"
 freeplay_source = freeplay.read_text(encoding="utf-8")
-freeplay_anchor = "\\t\\tMods.loadTopMod();"
-freeplay_fallback = """\\t\\tif (songs.length == 0)
-\\t\\t{
-\\t\\t\\tvar fallbackWeekName:String = "playgroundDefault";
-\\t\\t\\tvar fallbackWeek:WeekData = new WeekData(WeekData.createWeekFile(), fallbackWeekName);
-\\t\\t\\tfallbackWeek.weekBefore = "";
-\\t\\t\\tWeekData.weeksLoaded.set(fallbackWeekName, fallbackWeek);
-\\t\\t\\tWeekData.weeksList = [fallbackWeekName];
-\\t\\t\\tWeekData.setDirectoryFromWeek(fallbackWeek);
-\\t\\t\\tfor (song in fallbackWeek.songs)
-\\t\\t\\t{
-\\t\\t\\t\\tvar colors:Array<Int> = cast song[2];
-\\t\\t\\t\\tif (colors == null || colors.length < 3) colors = [146, 113, 253];
-\\t\\t\\t\\taddSong(Std.string(song[0]), 0, Std.string(song[1]), FlxColor.fromRGB(colors[0], colors[1], colors[2]));
-\\t\\t\\t}
-\\t\\t\\ttrace("[Playground] Week metadata unavailable; loaded built-in starter songs.");
-\\t\\t}
+freeplay_anchor = "\t\tMods.loadTopMod();"
+freeplay_fallback = """\t\tif (songs.length == 0)
+\t\t{
+\t\t\tvar fallbackWeekName:String = "playgroundDefault";
+\t\t\tvar fallbackWeek:WeekData = new WeekData(WeekData.createWeekFile(), fallbackWeekName);
+\t\t\tfallbackWeek.weekBefore = "";
+\t\t\tWeekData.weeksLoaded.set(fallbackWeekName, fallbackWeek);
+\t\t\tWeekData.weeksList = [fallbackWeekName];
+\t\t\tWeekData.setDirectoryFromWeek(fallbackWeek);
+\t\t\tfor (song in fallbackWeek.songs)
+\t\t\t{
+\t\t\t\tvar colors:Array<Int> = cast song[2];
+\t\t\t\tif (colors == null || colors.length < 3) colors = [146, 113, 253];
+\t\t\t\taddSong(Std.string(song[0]), 0, Std.string(song[1]), FlxColor.fromRGB(colors[0], colors[1], colors[2]));
+\t\t\t}
+\t\t\ttrace("[Playground] Week metadata unavailable; loaded built-in starter songs.");
+\t\t}
 \\n"""
 if freeplay_fallback.strip() not in freeplay_source:
     if freeplay_anchor not in freeplay_source:
