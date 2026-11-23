@@ -70,7 +70,7 @@ html5_loop = (
     + chr(9) * 2 + 'WeekData.setDirectoryFromWeek(pgWeek);' + chr(10)
     + chr(9) * 2 + 'addSong("Bopeebo", 0, "dad", FlxColor.fromRGB(146, 113, 253));' + chr(10)
     + chr(9) * 2 + 'addSong("Fresh", 0, "dad", FlxColor.fromRGB(146, 113, 253));' + chr(10)
-    + chr(9) * 2 + 'addSong("Dadbattle", 0, "dad", FlxColor.fromRGB(146, 113, 253));' + chr(10)
+    + chr(9) * 2 + 'addSong("Dad Battle", 0, "dad", FlxColor.fromRGB(146, 113, 253));' + chr(10)
     + chr(9) * 2 + '#else' + chr(10)
     + original_week_loop
     + chr(9) * 2 + '#end' + chr(10)
@@ -154,6 +154,59 @@ for marker, stage in stage_markers:
     tagged = TAB * 2 + "playgroundDebugStage = '" + stage + "';" + NL + marker
     if tagged not in freeplay_source:
         freeplay_source = freeplay_source.replace(marker, tagged, 1)
+freeplay.write_text(freeplay_source, encoding="utf-8")
+
+# Add mouse/touch-friendly song launching to browser Freeplay.
+TAB = chr(9)
+NL = chr(10)
+player_field = TAB + "var player:MusicPlayer;"
+mouse_field = player_field + NL + TAB + "var playgroundMouseAccept:Bool = false;"
+if player_field not in freeplay_source:
+    raise SystemExit("Could not find Freeplay MusicPlayer field")
+if mouse_field not in freeplay_source:
+    freeplay_source = freeplay_source.replace(player_field, mouse_field, 1)
+
+update_open = TAB + "override function update(elapsed:Float)" + NL + TAB + "{"
+if update_open not in freeplay_source:
+    raise SystemExit("Could not find Freeplay update function")
+update_start = freeplay_source.index(update_open) + len(update_open)
+reset_line = NL + TAB * 2 + "playgroundMouseAccept = false;"
+if reset_line not in freeplay_source[update_start:update_start + 120]:
+    freeplay_source = freeplay_source[:update_start] + reset_line + freeplay_source[update_start:]
+
+back_anchor = TAB * 2 + "if (controls.BACK)"
+back_pos = freeplay_source.index(back_anchor, update_start)
+mouse_block = (
+    NL + TAB * 2 + "// Browser mouse support: clicking a visible song row starts it."
+    + NL + TAB * 2 + "if (!player.playingMusic && grpSongs != null)"
+    + NL + TAB * 2 + "{"
+    + NL + TAB * 3 + "for (i in 0...grpSongs.members.length)"
+    + NL + TAB * 3 + "{"
+    + NL + TAB * 4 + "var row:Alphabet = grpSongs.members[i];"
+    + NL + TAB * 4 + "if (row != null && row.visible && FlxG.mouse.overlaps(row))"
+    + NL + TAB * 4 + "{"
+    + NL + TAB * 5 + "if (curSelected != i) changeSelection(i - curSelected, false);"
+    + NL + TAB * 5 + "if (FlxG.mouse.justPressed) playgroundMouseAccept = true;"
+    + NL + TAB * 4 + "}"
+    + NL + TAB * 3 + "}"
+    + NL + TAB * 2 + "}"
+    + NL + NL
+)
+if "// Browser mouse support: clicking a visible song row starts it." not in freeplay_source:
+    freeplay_source = freeplay_source[:back_pos] + mouse_block + freeplay_source[back_pos:]
+
+accept_old = "else if (controls.ACCEPT && !player.playingMusic)"
+accept_new = "else if ((controls.ACCEPT || playgroundMouseAccept) && !player.playingMusic)"
+if accept_old in freeplay_source:
+    freeplay_source = freeplay_source.replace(accept_old, accept_new, 1)
+elif accept_new not in freeplay_source:
+    raise SystemExit("Could not find Freeplay ACCEPT branch")
+
+hint_old = 'var leText:String = "Press SPACE to listen to the Song / Press CTRL to open the Gameplay Changers Menu / Press RESET to Reset your Score and Accuracy.";'
+hint_new = 'var leText:String = "UP / DOWN: SELECT     ENTER OR CLICK: PLAY     SPACE: PREVIEW";'
+if hint_old in freeplay_source:
+    freeplay_source = freeplay_source.replace(hint_old, hint_new, 1)
+
 freeplay.write_text(freeplay_source, encoding="utf-8")
 
 # Psych's MusicPlayer assumes playbackRate.split('.')[1] always exists.
