@@ -407,7 +407,207 @@ class PlaygroundMenuState extends MusicBeatState
     }
 }
 '''
+# PLAY opens Playground's freestyle sandbox, not Psych Freeplay.
+menu_source = menu_source.replace(
+    "MusicBeatState.switchState(new PlaygroundFreeplayState());",
+    "MusicBeatState.switchState(new PlaygroundSandboxState());",
+    1
+)
 menu_file.write_text(menu_source, encoding="utf-8")
+
+# Native Playground sandbox: freeform character animation testing inside Psych Engine.
+sandbox_file = root / "source" / "states" / "PlaygroundSandboxState.hx"
+sandbox_source = r'''package states;
+
+import backend.Paths;
+import flixel.FlxG;
+import flixel.FlxSprite;
+import flixel.text.FlxText;
+import flixel.util.FlxColor;
+import objects.Character;
+
+class PlaygroundSandboxState extends MusicBeatState
+{
+    private static var characterIds:Array<String> = ["bf", "dad", "gf"];
+    private static var characterNames:Array<String> = ["BOYFRIEND", "DADDY DEAREST", "GIRLFRIEND"];
+    private static var stageNames:Array<String> = ["THEATRE", "NIGHT", "GRID"];
+    private static var stageColors:Array<FlxColor> = [
+        FlxColor.fromRGB(48, 28, 68),
+        FlxColor.fromRGB(20, 28, 48),
+        FlxColor.fromRGB(28, 42, 48)
+    ];
+
+    private var characterIndex:Int = 0;
+    private var stageIndex:Int = 0;
+    private var player:Character;
+    private var backdrop:FlxSprite;
+    private var floor:FlxSprite;
+    private var characterLabel:FlxText;
+    private var stageLabel:FlxText;
+    private var actionLabel:FlxText;
+    private var singTimer:Float = 0;
+
+    override function create():Void
+    {
+        FlxG.mouse.visible = true;
+        FlxG.sound.playMusic(Paths.music("freakyMenu"), 0.35, true);
+
+        drawStage();
+
+        var topBar:FlxSprite = new FlxSprite(0, 0).makeGraphic(FlxG.width, 92, FlxColor.BLACK);
+        topBar.alpha = 0.72;
+        add(topBar);
+
+        var title:FlxText = new FlxText(28, 13, 560, "FNF PLAYGROUND", 38);
+        title.setFormat(Paths.font("vcr.ttf"), 38, FlxColor.WHITE, LEFT);
+        add(title);
+
+        var subtitle:FlxText = new FlxText(31, 57, 650, "FREESTYLE SANDBOX  /  PSYCH ENGINE 0.7.3", 15);
+        subtitle.setFormat(Paths.font("vcr.ttf"), 15, FlxColor.CYAN, LEFT);
+        add(subtitle);
+
+        player = new Character(FlxG.width * 0.54, FlxG.height * 0.30, characterIds[characterIndex], true);
+        player.dance();
+        add(player);
+
+        var sidePanel:FlxSprite = new FlxSprite(24, 125).makeGraphic(330, 310, FlxColor.BLACK);
+        sidePanel.alpha = 0.62;
+        add(sidePanel);
+
+        characterLabel = new FlxText(45, 150, 290, "", 25);
+        characterLabel.setFormat(Paths.font("vcr.ttf"), 25, FlxColor.WHITE, LEFT);
+        add(characterLabel);
+
+        stageLabel = new FlxText(45, 192, 290, "", 18);
+        stageLabel.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.CYAN, LEFT);
+        add(stageLabel);
+
+        var controlsTitle:FlxText = new FlxText(45, 240, 280, "FREESTYLE CONTROLS", 18);
+        controlsTitle.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.YELLOW, LEFT);
+        add(controlsTitle);
+
+        var controlsText:FlxText = new FlxText(45, 274, 285,
+            "ARROWS   SING / ANIMATE\nA / D      CHANGE CHARACTER\nQ / E      CHANGE STAGE\nM           MOD MANAGER\nESC        MAIN MENU", 16);
+        controlsText.setFormat(Paths.font("vcr.ttf"), 16, FlxColor.WHITE, LEFT);
+        add(controlsText);
+
+        actionLabel = new FlxText(24, FlxG.height - 58, FlxG.width - 48, "PRESS AN ARROW TO FREESTYLE", 19);
+        actionLabel.setFormat(Paths.font("vcr.ttf"), 19, FlxColor.WHITE, CENTER);
+        add(actionLabel);
+
+        refreshLabels();
+        super.create();
+    }
+
+    private function drawStage():Void
+    {
+        if (backdrop != null)
+        {
+            remove(backdrop, true);
+            backdrop.destroy();
+        }
+        if (floor != null)
+        {
+            remove(floor, true);
+            floor.destroy();
+        }
+
+        backdrop = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, stageColors[stageIndex]);
+        add(backdrop);
+
+        var glow:FlxSprite = new FlxSprite(0, 110).makeGraphic(FlxG.width, 3, FlxColor.fromRGB(178, 91, 210));
+        glow.alpha = 0.75;
+        add(glow);
+
+        floor = new FlxSprite(0, FlxG.height * 0.78).makeGraphic(FlxG.width, Std.int(FlxG.height * 0.22), FlxColor.fromRGB(36, 22, 43));
+        add(floor);
+
+        var floorLine:FlxSprite = new FlxSprite(0, FlxG.height * 0.78).makeGraphic(FlxG.width, 4, FlxColor.fromRGB(210, 150, 255));
+        add(floorLine);
+    }
+
+    private function refreshLabels():Void
+    {
+        characterLabel.text = "CHARACTER: " + characterNames[characterIndex];
+        stageLabel.text = "STAGE: " + stageNames[stageIndex];
+    }
+
+    private function changeCharacter(change:Int):Void
+    {
+        characterIndex = (characterIndex + change + characterIds.length) % characterIds.length;
+
+        if (player != null)
+        {
+            remove(player, true);
+            player.destroy();
+        }
+
+        player = new Character(FlxG.width * 0.54, FlxG.height * 0.30, characterIds[characterIndex], true);
+        player.dance();
+        add(player);
+        refreshLabels();
+        FlxG.sound.play(Paths.sound("scrollMenu"), 0.5);
+    }
+
+    private function sing(direction:String):Void
+    {
+        if (player == null) return;
+
+        player.playAnim("sing" + direction, true);
+        singTimer = 0.42;
+        actionLabel.text = "PLAYING: SING" + direction.toUpperCase();
+    }
+
+    override function update(elapsed:Float):Void
+    {
+        if (FlxG.keys.justPressed.ESCAPE)
+        {
+            MusicBeatState.switchState(new PlaygroundMenuState());
+            return;
+        }
+
+        if (FlxG.keys.justPressed.A) changeCharacter(-1);
+        if (FlxG.keys.justPressed.D) changeCharacter(1);
+
+        if (FlxG.keys.justPressed.Q)
+        {
+            stageIndex = (stageIndex + stageNames.length - 1) % stageNames.length;
+            drawStage();
+            refreshLabels();
+        }
+        if (FlxG.keys.justPressed.E)
+        {
+            stageIndex = (stageIndex + 1) % stageNames.length;
+            drawStage();
+            refreshLabels();
+        }
+
+        if (FlxG.keys.justPressed.M)
+        {
+            MusicBeatState.switchState(new PlaygroundModsState());
+            return;
+        }
+
+        if (FlxG.keys.justPressed.LEFT) sing("LEFT");
+        if (FlxG.keys.justPressed.DOWN) sing("DOWN");
+        if (FlxG.keys.justPressed.UP) sing("UP");
+        if (FlxG.keys.justPressed.RIGHT) sing("RIGHT");
+
+        if (singTimer > 0)
+        {
+            singTimer -= elapsed;
+            if (singTimer <= 0 && player != null)
+            {
+                player.dance();
+                actionLabel.text = "PRESS AN ARROW TO FREESTYLE";
+            }
+        }
+
+        super.update(elapsed);
+    }
+}
+'''
+sandbox_file.write_text(sandbox_source, encoding="utf-8")
 
 # Retain Psych Freeplay, but turn otherwise opaque browser crashes into a readable error screen.
 freeplay_wrapper = root / "source" / "states" / "PlaygroundFreeplayState.hx"
