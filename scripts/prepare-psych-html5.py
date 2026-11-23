@@ -52,6 +52,32 @@ if reload_anchor not in freeplay_source:
 if html5_week_bootstrap not in freeplay_source:
     freeplay_source = freeplay_source.replace(reload_anchor, reload_anchor + chr(10) + html5_week_bootstrap, 1)
 
+# In HTML5, bypass the external week list entirely. It can contain null metadata
+# before Freeplay enumerates it; seed the normal Psych starter songs directly.
+loop_start = chr(9) * 2 + 'for (i in 0...WeekData.weeksList.length) {'
+loop_end = chr(9) * 2 + 'Mods.loadTopMod();'
+start = freeplay_source.index(loop_start)
+end = freeplay_source.index(loop_end, start)
+original_week_loop = freeplay_source[start:end]
+html5_loop = (
+    chr(9) * 2 + '#if html5' + chr(10)
+    + chr(9) * 2 + 'var pgWeekName:String = "playgroundDefault";' + chr(10)
+    + chr(9) * 2 + 'var pgWeek:WeekData = new WeekData(WeekData.createWeekFile(), pgWeekName);' + chr(10)
+    + chr(9) * 2 + 'pgWeek.startUnlocked = true;' + chr(10)
+    + chr(9) * 2 + 'pgWeek.weekBefore = "";' + chr(10)
+    + chr(9) * 2 + 'WeekData.weeksLoaded.set(pgWeekName, pgWeek);' + chr(10)
+    + chr(9) * 2 + 'WeekData.weeksList = [pgWeekName];' + chr(10)
+    + chr(9) * 2 + 'WeekData.setDirectoryFromWeek(pgWeek);' + chr(10)
+    + chr(9) * 2 + 'addSong("Bopeebo", 0, "dad", FlxColor.fromRGB(146, 113, 253));' + chr(10)
+    + chr(9) * 2 + 'addSong("Fresh", 0, "dad", FlxColor.fromRGB(146, 113, 253));' + chr(10)
+    + chr(9) * 2 + 'addSong("Dadbattle", 0, "dad", FlxColor.fromRGB(146, 113, 253));' + chr(10)
+    + chr(9) * 2 + '#else' + chr(10)
+    + original_week_loop
+    + chr(9) * 2 + '#end' + chr(10)
+)
+if '#if html5' + chr(10) not in original_week_loop:
+    freeplay_source = freeplay_source[:start] + html5_loop + freeplay_source[end:]
+
 # Browser builds may load partially populated week JSON. Guard fields that
 # Psych's original FreeplayState assumes are always non-null.
 week_entry = "var leWeek:WeekData = WeekData.weeksLoaded.get(WeekData.weeksList[i]);"
