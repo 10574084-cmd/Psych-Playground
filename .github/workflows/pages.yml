@@ -1,4 +1,4 @@
-name: Deploy FNF Playground Psych to GitHub Pages
+name: Build Psych Engine HTML5 and Deploy
 
 on:
   push:
@@ -15,20 +15,62 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build-and-deploy:
+    runs-on: ubuntu-22.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Playground
         uses: actions/checkout@v4
-      - name: Configure Pages
+        with:
+          path: playground
+
+      - name: Checkout the exact Psych Engine 0.7.3 source
+        uses: actions/checkout@v4
+        with:
+          repository: ShadowMario/FNF-PsychEngine
+          ref: 2dfa27773a3668e0c1b043a3fb4348942c8a6fb3
+          path: psych-engine
+
+      - name: Set up Haxe 4.2.5
+        uses: krdlab/setup-haxe@master
+        with:
+          haxe-version: 4.2.5
+
+      - name: Install Psych Engine 0.7.3 web dependencies
+        run: |
+          haxelib setup "$HOME/haxelib"
+          haxelib install lime 8.0.1 --quiet
+          haxelib install openfl 9.2.1 --quiet
+          haxelib install flixel 5.2.2 --quiet
+          haxelib install flixel-addons 3.0.2 --quiet
+          haxelib install flixel-ui 2.5.0 --quiet
+          haxelib install tjson 1.4.0 --quiet
+          haxelib git flxanimate https://github.com/ShadowMario/flxanimate dev
+
+      - name: Prepare Psych Engine for a browser build
+        run: python3 playground/scripts/prepare-psych-html5.py psych-engine
+
+      - name: Compile the actual Psych Engine runtime to HTML5
+        working-directory: psych-engine
+        run: haxelib run lime build Project.xml html5 -release
+
+      - name: Put the compiled engine inside the Pages site
+        run: |
+          test -f psych-engine/export/release/html5/bin/index.html
+          rm -rf playground/site/engine
+          mkdir -p playground/site/engine
+          cp -R psych-engine/export/release/html5/bin/. playground/site/engine/
+
+      - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
-      - name: Upload static site
+
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: playground/site
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
