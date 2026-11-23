@@ -63,7 +63,7 @@ function render(){
   requestAnimationFrame(render);
 }
 function suffixFile(zip,image,ext){
-  const base=image.replace(/^\/+ /,"").replace(/\.(png|xml)$/i,"");
+  const base=image.replace(/^\/+/,"").replace(/\.(png|xml)$/i,"");
   const paths=Object.keys(zip.files).filter(p=>!zip.files[p].dir);
   return paths.find(p=>p.toLowerCase().endsWith(("/images/"+base+"."+ext).toLowerCase()))||paths.find(p=>p.toLowerCase().endsWith("/"+base.split("/").pop().toLowerCase()+"."+ext));
 }
