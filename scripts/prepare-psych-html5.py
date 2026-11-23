@@ -315,10 +315,6 @@ class PlaygroundMenuState extends MusicBeatState
         title.borderSize = 3;
         add(title);
 
-        var subtitle:FlxText = new FlxText(110, 124, 600, "PSYCH ENGINE 0.7.3", 18);
-        subtitle.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.CYAN, FlxTextAlign.LEFT);
-        add(subtitle);
-
         boyfriend = new Character(785, 235, "bf", true);
         boyfriend.setGraphicSize(Std.int(boyfriend.width * 0.88));
         boyfriend.updateHitbox();
@@ -420,13 +416,17 @@ sandbox_file = root / "source" / "states" / "PlaygroundSandboxState.hx"
 sandbox_source = r'''package states;
 
 import backend.BaseStage;
+import backend.ClientPrefs;
 import backend.CoolUtil;
 import backend.Paths;
 import backend.PlaygroundModStore;
 import backend.Song;
+import backend.StageData;
 import flixel.FlxBasic;
 import flixel.FlxG;
+import flixel.FlxObject;
 import flixel.FlxSprite;
+import flixel.FlxCamera.FlxCameraFollowStyle;
 import flixel.text.FlxText;
 import flixel.text.FlxText.FlxTextAlign;
 import flixel.util.FlxColor;
@@ -438,15 +438,24 @@ class PlaygroundSandboxState extends MusicBeatState
     private var stageIds:Array<String> = ["stage", "spooky", "philly", "limo", "mall", "mallEvil", "school", "schoolEvil", "tank"];
     private var stageDirectories:Array<String> = ["week1", "week2", "week3", "week4", "week5", "week5", "week6", "week6", "week7"];
     private var stageLabels:Array<String> = ["WEEK 1 - STAGE", "WEEK 2 - SPOOKY", "WEEK 3 - PHILLY", "WEEK 4 - LIMO", "WEEK 5 - MALL", "WEEK 5 - MALL EVIL", "WEEK 6 - SCHOOL", "WEEK 6 - SCHOOL EVIL", "WEEK 7 - TANK"];
-    private var characterIndex:Int = 0;
+
+    private var characterIndexP1:Int = 0;
+    private var characterIndexP2:Int = 0;
     private var stageIndex:Int = 0;
-    private var player:Character;
+
+    private var playerOne:Character;
+    private var playerTwo:Character;
+    private var cameraTarget:FlxObject;
     private var activeStage:BaseStage;
     private var stageObjects:Array<FlxBasic> = [];
-    private var characterLabel:FlxText;
+
+    private var playerOneLabel:FlxText;
+    private var playerTwoLabel:FlxText;
     private var stageLabel:FlxText;
     private var actionLabel:FlxText;
-    private var singTimer:Float = 0;
+
+    private var playerOneSingTimer:Float = 0;
+    private var playerTwoSingTimer:Float = 0;
     private var previousAssetDirectory:String = null;
 
     override function create():Void
@@ -455,9 +464,10 @@ class PlaygroundSandboxState extends MusicBeatState
         FlxG.mouse.visible = true;
         previousAssetDirectory = Paths.currentLevel;
 
-        var loading:FlxText = new FlxText(0, FlxG.height * 0.45, FlxG.width, "LOADING PLAYGROUND CONTENT...", 24);
+        var loading:FlxText = new FlxText(0, FlxG.height * 0.45, FlxG.width, "LOADING PLAYGROUND...", 24);
         loading.setFormat(Paths.font("vcr.ttf"), 24, FlxColor.WHITE, FlxTextAlign.CENTER);
         add(loading);
+
         PlaygroundModStore.loadStored(function(success:Bool, message:String)
         {
             remove(loading, true);
@@ -470,12 +480,20 @@ class PlaygroundSandboxState extends MusicBeatState
 
     private function buildPlayground():Void
     {
-        // Keep the character list from the actual Psych Engine asset library.
         characterIds = CoolUtil.coolTextFile(Paths.getSharedPath("data/characterList.txt"));
+        if (characterIds == null) characterIds = [];
         characterIds = [for (id in characterIds) if (id != null && id.trim().length > 0) id.trim()];
+
         for (modCharacter in PlaygroundModStore.characterIds)
             if (characterIds.indexOf(modCharacter) < 0) characterIds.push(modCharacter);
-        if (characterIds.length == 0) characterIds = ["bf", "dad", "gf"];
+
+        if (characterIds.indexOf("bf") < 0) characterIds.unshift("bf");
+        if (characterIds.indexOf("dad") < 0) characterIds.push("dad");
+
+        characterIndexP1 = characterIds.indexOf("bf");
+        characterIndexP2 = characterIds.indexOf("dad");
+        if (characterIndexP1 < 0) characterIndexP1 = 0;
+        if (characterIndexP2 < 0) characterIndexP2 = 0;
 
         try
         {
@@ -489,75 +507,116 @@ class PlaygroundSandboxState extends MusicBeatState
 
         drawStage();
 
-        var topBar:FlxSprite = new FlxSprite(0, 0).makeGraphic(FlxG.width, 92, FlxColor.BLACK);
-        topBar.alpha = 0.72;
+        cameraTarget = new FlxObject(0, 0, 1, 1);
+        add(cameraTarget);
+        createPlayers();
+
+        var topBar:FlxSprite = new FlxSprite(0, 0).makeGraphic(FlxG.width, 82, FlxColor.BLACK);
+        topBar.alpha = 0.68;
         add(topBar);
 
-        var title:FlxText = new FlxText(28, 13, 560, "FNF PLAYGROUND", 38);
-        title.setFormat(Paths.font("vcr.ttf"), 38, FlxColor.WHITE, FlxTextAlign.LEFT);
+        var title:FlxText = new FlxText(28, 18, 560, "FNF PLAYGROUND", 36);
+        title.setFormat(Paths.font("vcr.ttf"), 36, FlxColor.WHITE, FlxTextAlign.LEFT);
         add(title);
 
-        var subtitle:FlxText = new FlxText(31, 57, 650, "FREESTYLE SANDBOX  /  PSYCH ENGINE 0.7.3", 15);
-        subtitle.setFormat(Paths.font("vcr.ttf"), 15, FlxColor.CYAN, FlxTextAlign.LEFT);
-        add(subtitle);
-
-        createSelectedCharacter();
-
-        var sidePanel:FlxSprite = new FlxSprite(24, 125).makeGraphic(350, 370, FlxColor.BLACK);
-        sidePanel.alpha = 0.68;
+        var sidePanel:FlxSprite = new FlxSprite(24, 112).makeGraphic(360, 395, FlxColor.BLACK);
+        sidePanel.alpha = 0.66;
         add(sidePanel);
 
-        characterLabel = new FlxText(45, 150, 310, "", 22);
-        characterLabel.setFormat(Paths.font("vcr.ttf"), 22, FlxColor.WHITE, FlxTextAlign.LEFT);
-        add(characterLabel);
+        playerOneLabel = new FlxText(44, 132, 325, "", 19);
+        playerOneLabel.setFormat(Paths.font("vcr.ttf"), 19, FlxColor.CYAN, FlxTextAlign.LEFT);
+        add(playerOneLabel);
 
-        stageLabel = new FlxText(45, 190, 310, "", 17);
-        stageLabel.setFormat(Paths.font("vcr.ttf"), 17, FlxColor.CYAN, FlxTextAlign.LEFT);
+        playerTwoLabel = new FlxText(44, 166, 325, "", 19);
+        playerTwoLabel.setFormat(Paths.font("vcr.ttf"), 19, FlxColor.LIME, FlxTextAlign.LEFT);
+        add(playerTwoLabel);
+
+        stageLabel = new FlxText(44, 211, 325, "", 17);
+        stageLabel.setFormat(Paths.font("vcr.ttf"), 17, FlxColor.WHITE, FlxTextAlign.LEFT);
         add(stageLabel);
 
-        var controlsTitle:FlxText = new FlxText(45, 235, 300, "FREESTYLE CONTROLS", 18);
+        var controlsTitle:FlxText = new FlxText(44, 252, 310, "PLAYER CONTROLS", 18);
         controlsTitle.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.YELLOW, FlxTextAlign.LEFT);
         add(controlsTitle);
 
-        var controlsText:FlxText = new FlxText(45, 270, 310,
-            "ARROWS   SING / ANIMATE\nA / D      CHARACTER\nQ / E      REAL STAGE\nM           IMPORT MOD ZIP\nESC        MAIN MENU", 16);
-        controlsText.setFormat(Paths.font("vcr.ttf"), 16, FlxColor.WHITE, FlxTextAlign.LEFT);
+        var controlsText:FlxText = new FlxText(44, 285, 325,
+            "P1   ARROW KEYS   /   F G: CHARACTER\nP2   W A S D       /   U I: CHARACTER\nQ / E   CHANGE STAGE\nM       MODS\nESC    MAIN MENU\n\nCUSTOMIZE BOTH PLAYERS IN OPTIONS > CONTROLS", 14);
+        controlsText.setFormat(Paths.font("vcr.ttf"), 14, FlxColor.WHITE, FlxTextAlign.LEFT);
         add(controlsText);
 
-        actionLabel = new FlxText(24, FlxG.height - 58, FlxG.width - 48, "PRESS AN ARROW TO FREESTYLE", 19);
-        actionLabel.setFormat(Paths.font("vcr.ttf"), 19, FlxColor.WHITE, FlxTextAlign.CENTER);
+        actionLabel = new FlxText(24, FlxG.height - 48, FlxG.width - 48, "P1: ARROWS     P2: W A S D", 18);
+        actionLabel.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.WHITE, FlxTextAlign.CENTER);
         add(actionLabel);
 
         refreshLabels();
+        focusCamera(true);
     }
 
-    private function createSelectedCharacter():Void
+    private function stageFile():Dynamic
     {
-        if (player != null)
+        return StageData.getStageFile(stageIds[stageIndex]);
+    }
+
+    private function characterPosition(isPlayerOne:Bool):Array<Float>
+    {
+        var data = stageFile();
+        if (data != null)
         {
-            remove(player, true);
-            player.destroy();
-            player = null;
+            var coords:Array<Dynamic> = isPlayerOne ? data.boyfriend : data.opponent;
+            if (coords != null && coords.length > 1)
+                return [coords[0], coords[1]];
+        }
+        return isPlayerOne ? [770, 100] : [100, 100];
+    }
+
+    private function createPlayers():Void
+    {
+        if (playerOne != null)
+        {
+            remove(playerOne, true);
+            playerOne.destroy();
+        }
+        if (playerTwo != null)
+        {
+            remove(playerTwo, true);
+            playerTwo.destroy();
         }
 
-        var startX:Float = 770;
-        var startY:Float = 450;
-        var stageData = backend.StageData.getStageFile(stageIds[stageIndex]);
-        if (stageData != null && stageData.boyfriend != null && stageData.boyfriend.length > 1)
-        {
-            startX = stageData.boyfriend[0];
-            startY = stageData.boyfriend[1];
-        }
+        var p1Pos = characterPosition(true);
+        var p2Pos = characterPosition(false);
+        playerOne = new Character(p1Pos[0], p1Pos[1], characterIds[characterIndexP1], true);
+        playerTwo = new Character(p2Pos[0], p2Pos[1], characterIds[characterIndexP2], false);
+        playerOne.dance();
+        playerTwo.dance();
 
-        player = new Character(startX, startY, characterIds[characterIndex], true);
-        player.dance();
-        // The character sits between the stage art and the Playground interface.
-        insert(Std.int(Math.min(stageObjects.length, members.length)), player);
+        reorderMainLayers();
+        focusCamera(true);
+    }
+
+    private function reorderMainLayers():Void
+    {
+        var nextLayer:Int = stageObjects.length;
+        if (cameraTarget != null)
+        {
+            remove(cameraTarget, true);
+            insert(Std.int(Math.min(nextLayer, members.length)), cameraTarget);
+            nextLayer++;
+        }
+        if (playerOne != null)
+        {
+            remove(playerOne, true);
+            insert(Std.int(Math.min(nextLayer, members.length)), playerOne);
+            nextLayer++;
+        }
+        if (playerTwo != null)
+        {
+            remove(playerTwo, true);
+            insert(Std.int(Math.min(nextLayer, members.length)), playerTwo);
+        }
     }
 
     private function drawStage():Void
     {
-        // Remove the old stage sprites before disposing of its stage controller.
         for (object in stageObjects)
         {
             remove(object, true);
@@ -578,18 +637,18 @@ class PlaygroundSandboxState extends MusicBeatState
             catch (error:Dynamic) trace("[Playground] Song metadata unavailable: " + error);
         }
 
-        var stageData = backend.StageData.getStageFile(stageIds[stageIndex]);
+        var data = stageFile();
         var assetDirectory:String = stageDirectories[stageIndex];
-        if (stageData != null && stageData.directory != null && stageData.directory.length > 0)
-            assetDirectory = stageData.directory;
+        if (data != null && data.directory != null && data.directory.length > 0)
+            assetDirectory = data.directory;
 
-        // Psych Engine stores each week's stage art in its week_assets library.
-        // Without this, Paths.image() looks in assets/shared/images and returns null.
         Paths.setCurrentLevel(assetDirectory);
+        PlayState.curStage = stageIds[stageIndex];
 
         if (PlayState.SONG != null)
         {
             PlayState.SONG.stage = stageIds[stageIndex];
+            PlayState.SONG.song = "Tutorial";
             PlayState.SONG.gfVersion = "gf";
         }
 
@@ -619,37 +678,70 @@ class PlaygroundSandboxState extends MusicBeatState
             if (before.indexOf(object) < 0)
                 stageObjects.push(object);
 
-        // Stage classes append their sprites at the end. Move the complete stage
-        // as one ordered block to the bottom so it cannot cover the menu or crash
-        // when the stage selector is used repeatedly.
-        var stageLayerIndex:Int = 0;
+        var layer:Int = 0;
         for (object in stageObjects)
         {
             remove(object, true);
-            insert(stageLayerIndex, object);
-            stageLayerIndex++;
+            insert(layer, object);
+            layer++;
         }
 
-        if (player != null)
+        reorderMainLayers();
+        if (cameraTarget != null)
+            focusCamera(true);
+    }
+
+    private function offsetValue(values:Array<Float>, index:Int):Float
+    {
+        return values != null && values.length > index ? values[index] : 0;
+    }
+
+    private function focusCamera(onPlayerOne:Bool):Void
+    {
+        if (cameraTarget == null) return;
+        var actor:Character = onPlayerOne ? playerOne : playerTwo;
+        if (actor == null) return;
+
+        var data = stageFile();
+        var zoom:Float = (data != null && data.defaultZoom != null && data.defaultZoom > 0) ? data.defaultZoom : 0.9;
+        FlxG.camera.zoom = zoom;
+
+        var midpoint = actor.getMidpoint();
+        if (onPlayerOne)
         {
-            remove(player, true);
-            insert(Std.int(Math.min(stageObjects.length, members.length)), player);
+            cameraTarget.setPosition(midpoint.x - 100, midpoint.y - 100);
+            cameraTarget.x -= offsetValue(actor.cameraPosition, 0) - offsetValue(data == null ? null : data.camera_boyfriend, 0);
+            cameraTarget.y += offsetValue(actor.cameraPosition, 1) + offsetValue(data == null ? null : data.camera_boyfriend, 1);
         }
+        else
+        {
+            cameraTarget.setPosition(midpoint.x + 150, midpoint.y - 100);
+            cameraTarget.x += offsetValue(actor.cameraPosition, 0) + offsetValue(data == null ? null : data.camera_opponent, 0);
+            cameraTarget.y += offsetValue(actor.cameraPosition, 1) + offsetValue(data == null ? null : data.camera_opponent, 1);
+        }
+
+        FlxG.camera.follow(cameraTarget, FlxCameraFollowStyle.LOCKON, 0.04);
     }
 
     private function refreshLabels():Void
     {
-        if (characterLabel != null && characterIds.length > 0)
-            characterLabel.text = "CHARACTER (" + (characterIndex + 1) + "/" + characterIds.length + "): " + characterIds[characterIndex].toUpperCase();
+        if (playerOneLabel != null && characterIds.length > 0)
+            playerOneLabel.text = "P1: " + characterIds[characterIndexP1].toUpperCase();
+        if (playerTwoLabel != null && characterIds.length > 0)
+            playerTwoLabel.text = "P2: " + characterIds[characterIndexP2].toUpperCase();
         if (stageLabel != null)
-            stageLabel.text = "STAGE (" + (stageIndex + 1) + "/" + stageIds.length + "): " + stageLabels[stageIndex];
+            stageLabel.text = "STAGE: " + stageLabels[stageIndex];
     }
 
-    private function changeCharacter(change:Int):Void
+    private function changePlayerCharacter(isPlayerOne:Bool, change:Int):Void
     {
         if (characterIds.length == 0) return;
-        characterIndex = (characterIndex + change + characterIds.length) % characterIds.length;
-        createSelectedCharacter();
+        if (isPlayerOne)
+            characterIndexP1 = (characterIndexP1 + change + characterIds.length) % characterIds.length;
+        else
+            characterIndexP2 = (characterIndexP2 + change + characterIds.length) % characterIds.length;
+
+        createPlayers();
         refreshLabels();
         FlxG.sound.play(Paths.sound("scrollMenu"), 0.5);
     }
@@ -658,16 +750,33 @@ class PlaygroundSandboxState extends MusicBeatState
     {
         stageIndex = (stageIndex + change + stageIds.length) % stageIds.length;
         drawStage();
+
+        var p1Pos = characterPosition(true);
+        var p2Pos = characterPosition(false);
+        if (playerOne != null) playerOne.setPosition(p1Pos[0], p1Pos[1]);
+        if (playerTwo != null) playerTwo.setPosition(p2Pos[0], p2Pos[1]);
+
+        focusCamera(true);
         refreshLabels();
         FlxG.sound.play(Paths.sound("scrollMenu"), 0.5);
     }
 
-    private function sing(direction:String):Void
+    private function singPlayer(isPlayerOne:Bool, direction:String):Void
     {
-        if (player == null) return;
-        player.playAnim("sing" + direction, true);
-        singTimer = 0.42;
-        actionLabel.text = "PLAYING: SING" + direction.toUpperCase();
+        var actor:Character = isPlayerOne ? playerOne : playerTwo;
+        if (actor == null) return;
+        actor.playAnim("sing" + direction, true);
+
+        if (isPlayerOne) playerOneSingTimer = 0.42;
+        else playerTwoSingTimer = 0.42;
+
+        actionLabel.text = (isPlayerOne ? "PLAYER 1" : "PLAYER 2") + " / SING " + direction;
+        focusCamera(isPlayerOne);
+    }
+
+    private function boundJustPressed(action:String):Bool
+    {
+        return controls != null && controls.justPressed(action);
     }
 
     override function update(elapsed:Float):Void
@@ -678,8 +787,10 @@ class PlaygroundSandboxState extends MusicBeatState
             return;
         }
 
-        if (FlxG.keys.justPressed.A) changeCharacter(-1);
-        if (FlxG.keys.justPressed.D) changeCharacter(1);
+        if (FlxG.keys.justPressed.F) changePlayerCharacter(true, -1);
+        if (FlxG.keys.justPressed.G) changePlayerCharacter(true, 1);
+        if (FlxG.keys.justPressed.U) changePlayerCharacter(false, -1);
+        if (FlxG.keys.justPressed.I) changePlayerCharacter(false, 1);
         if (FlxG.keys.justPressed.Q) changeStage(-1);
         if (FlxG.keys.justPressed.E) changeStage(1);
 
@@ -690,19 +801,25 @@ class PlaygroundSandboxState extends MusicBeatState
             return;
         }
 
-        if (FlxG.keys.justPressed.LEFT) sing("LEFT");
-        if (FlxG.keys.justPressed.DOWN) sing("DOWN");
-        if (FlxG.keys.justPressed.UP) sing("UP");
-        if (FlxG.keys.justPressed.RIGHT) sing("RIGHT");
+        if (boundJustPressed("pg_p1_note_left")) singPlayer(true, "LEFT");
+        if (boundJustPressed("pg_p1_note_down")) singPlayer(true, "DOWN");
+        if (boundJustPressed("pg_p1_note_up")) singPlayer(true, "UP");
+        if (boundJustPressed("pg_p1_note_right")) singPlayer(true, "RIGHT");
 
-        if (singTimer > 0)
+        if (boundJustPressed("pg_p2_note_left")) singPlayer(false, "LEFT");
+        if (boundJustPressed("pg_p2_note_down")) singPlayer(false, "DOWN");
+        if (boundJustPressed("pg_p2_note_up")) singPlayer(false, "UP");
+        if (boundJustPressed("pg_p2_note_right")) singPlayer(false, "RIGHT");
+
+        if (playerOneSingTimer > 0)
         {
-            singTimer -= elapsed;
-            if (singTimer <= 0 && player != null)
-            {
-                player.dance();
-                actionLabel.text = "PRESS AN ARROW TO FREESTYLE";
-            }
+            playerOneSingTimer -= elapsed;
+            if (playerOneSingTimer <= 0 && playerOne != null) playerOne.dance();
+        }
+        if (playerTwoSingTimer > 0)
+        {
+            playerTwoSingTimer -= elapsed;
+            if (playerTwoSingTimer <= 0 && playerTwo != null) playerTwo.dance();
         }
 
         super.update(elapsed);
@@ -725,6 +842,61 @@ class PlaygroundSandboxState extends MusicBeatState
 '''
 
 sandbox_file.write_text(sandbox_source, encoding="utf-8")
+
+
+# Add independently rebindable Playground controls to Psych Engine's native Controls menu.
+client_prefs = root / "source" / "backend" / "ClientPrefs.hx"
+client_prefs_source = client_prefs.read_text(encoding="utf-8")
+keyboard_anchor = "\t\t'note_right'\t=> [D, RIGHT],"
+keyboard_add = """\t\t'note_right'\t=> [D, RIGHT],
+
+\t\t'pg_p1_note_left'\t=> [LEFT, NONE],
+\t\t'pg_p1_note_down'\t=> [DOWN, NONE],
+\t\t'pg_p1_note_up'\t\t=> [UP, NONE],
+\t\t'pg_p1_note_right'\t=> [RIGHT, NONE],
+\t\t'pg_p2_note_left'\t=> [A, NONE],
+\t\t'pg_p2_note_down'\t=> [S, NONE],
+\t\t'pg_p2_note_up'\t\t=> [W, NONE],
+\t\t'pg_p2_note_right'\t=> [D, NONE],"""
+if "pg_p1_note_left" not in client_prefs_source:
+    if keyboard_anchor not in client_prefs_source:
+        raise SystemExit("Could not locate ClientPrefs keyboard note bindings")
+    client_prefs_source = client_prefs_source.replace(keyboard_anchor, keyboard_add, 1)
+
+gamepad_anchor = "\t\t'note_right'\t=> [DPAD_RIGHT, B],"
+gamepad_add = """\t\t'note_right'\t=> [DPAD_RIGHT, B],
+
+\t\t'pg_p1_note_left'\t=> [DPAD_LEFT, NONE],
+\t\t'pg_p1_note_down'\t=> [DPAD_DOWN, NONE],
+\t\t'pg_p1_note_up'\t\t=> [DPAD_UP, NONE],
+\t\t'pg_p1_note_right'\t=> [DPAD_RIGHT, NONE],
+\t\t'pg_p2_note_left'\t=> [X, NONE],
+\t\t'pg_p2_note_down'\t=> [A, NONE],
+\t\t'pg_p2_note_up'\t\t=> [Y, NONE],
+\t\t'pg_p2_note_right'\t=> [B, NONE],"""
+if "pg_p1_note_left" in client_prefs_source and gamepad_anchor in client_prefs_source and "'pg_p1_note_left'\t=> [DPAD_LEFT, NONE]" not in client_prefs_source:
+    client_prefs_source = client_prefs_source.replace(gamepad_anchor, gamepad_add, 1)
+client_prefs.write_text(client_prefs_source, encoding="utf-8")
+
+controls_file = root / "source" / "options" / "ControlsSubState.hx"
+controls_source = controls_file.read_text(encoding="utf-8")
+controls_anchor = "\t\t[true, 'NOTES'],"
+controls_add = """\t\t[true, 'NOTES'],
+\t\t[true, 'PLAYGROUND / PLAYER 1'],
+\t\t[true, 'Left', 'pg_p1_note_left', 'Player 1 Left'],
+\t\t[true, 'Down', 'pg_p1_note_down', 'Player 1 Down'],
+\t\t[true, 'Up', 'pg_p1_note_up', 'Player 1 Up'],
+\t\t[true, 'Right', 'pg_p1_note_right', 'Player 1 Right'],
+\t\t[true, 'PLAYGROUND / PLAYER 2'],
+\t\t[true, 'Left', 'pg_p2_note_left', 'Player 2 Left'],
+\t\t[true, 'Down', 'pg_p2_note_down', 'Player 2 Down'],
+\t\t[true, 'Up', 'pg_p2_note_up', 'Player 2 Up'],
+\t\t[true, 'Right', 'pg_p2_note_right', 'Player 2 Right'],"""
+if "pg_p1_note_left" not in controls_source:
+    if controls_anchor not in controls_source:
+        raise SystemExit("Could not locate ControlsSubState note section")
+    controls_source = controls_source.replace(controls_anchor, controls_add, 1)
+controls_file.write_text(controls_source, encoding="utf-8")
 
 # Retain Psych Freeplay, but turn otherwise opaque browser crashes into a readable error screen.
 freeplay_wrapper = root / "source" / "states" / "PlaygroundFreeplayState.hx"
