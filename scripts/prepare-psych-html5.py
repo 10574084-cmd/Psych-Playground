@@ -316,7 +316,7 @@ class PlaygroundMenuState extends MusicBeatState
         add(title);
 
         var subtitle:FlxText = new FlxText(110, 124, 600, "PSYCH ENGINE 0.7.3", 18);
-        subtitle.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.CYAN, LEFT);
+        subtitle.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.CYAN, FlxTextAlign.LEFT);
         add(subtitle);
 
         boyfriend = new Character(785, 235, "bf", true);
@@ -337,7 +337,7 @@ class PlaygroundMenuState extends MusicBeatState
 
         var hint:FlxText = new FlxText(94, FlxG.height - 54, FlxG.width - 188,
             "UP / DOWN  SELECT          ENTER  CONFIRM          ESC  BACK", 16);
-        hint.setFormat(Paths.font("vcr.ttf"), 16, FlxColor.WHITE, CENTER);
+        hint.setFormat(Paths.font("vcr.ttf"), 16, FlxColor.WHITE, FlxTextAlign.CENTER);
         hint.alpha = 0.9;
         add(hint);
 
@@ -423,6 +423,7 @@ import backend.Paths;
 import flixel.FlxG;
 import flixel.FlxSprite;
 import flixel.text.FlxText;
+import flixel.text.FlxTextAlign;
 import flixel.util.FlxColor;
 import objects.Character;
 
@@ -459,11 +460,11 @@ class PlaygroundSandboxState extends MusicBeatState
         add(topBar);
 
         var title:FlxText = new FlxText(28, 13, 560, "FNF PLAYGROUND", 38);
-        title.setFormat(Paths.font("vcr.ttf"), 38, FlxColor.WHITE, LEFT);
+        title.setFormat(Paths.font("vcr.ttf"), 38, FlxColor.WHITE, FlxTextAlign.LEFT);
         add(title);
 
         var subtitle:FlxText = new FlxText(31, 57, 650, "FREESTYLE SANDBOX  /  PSYCH ENGINE 0.7.3", 15);
-        subtitle.setFormat(Paths.font("vcr.ttf"), 15, FlxColor.CYAN, LEFT);
+        subtitle.setFormat(Paths.font("vcr.ttf"), 15, FlxColor.CYAN, FlxTextAlign.LEFT);
         add(subtitle);
 
         player = new Character(FlxG.width * 0.54, FlxG.height * 0.30, characterIds[characterIndex], true);
@@ -475,11 +476,11 @@ class PlaygroundSandboxState extends MusicBeatState
         add(sidePanel);
 
         characterLabel = new FlxText(45, 150, 290, "", 25);
-        characterLabel.setFormat(Paths.font("vcr.ttf"), 25, FlxColor.WHITE, LEFT);
+        characterLabel.setFormat(Paths.font("vcr.ttf"), 25, FlxColor.WHITE, FlxTextAlign.LEFT);
         add(characterLabel);
 
         stageLabel = new FlxText(45, 192, 290, "", 18);
-        stageLabel.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.CYAN, LEFT);
+        stageLabel.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.CYAN, FlxTextAlign.LEFT);
         add(stageLabel);
 
         var controlsTitle:FlxText = new FlxText(45, 240, 280, "FREESTYLE CONTROLS", 18);
@@ -488,11 +489,11 @@ class PlaygroundSandboxState extends MusicBeatState
 
         var controlsText:FlxText = new FlxText(45, 274, 285,
             "ARROWS   SING / ANIMATE\nA / D      CHANGE CHARACTER\nQ / E      CHANGE STAGE\nM           MOD MANAGER\nESC        MAIN MENU", 16);
-        controlsText.setFormat(Paths.font("vcr.ttf"), 16, FlxColor.WHITE, LEFT);
+        controlsText.setFormat(Paths.font("vcr.ttf"), 16, FlxColor.WHITE, FlxTextAlign.LEFT);
         add(controlsText);
 
         actionLabel = new FlxText(24, FlxG.height - 58, FlxG.width - 48, "PRESS AN ARROW TO FREESTYLE", 19);
-        actionLabel.setFormat(Paths.font("vcr.ttf"), 19, FlxColor.WHITE, CENTER);
+        actionLabel.setFormat(Paths.font("vcr.ttf"), 19, FlxColor.WHITE, FlxTextAlign.CENTER);
         add(actionLabel);
 
         refreshLabels();
@@ -503,13 +504,9 @@ class PlaygroundSandboxState extends MusicBeatState
     {
         if (backdrop != null)
         {
-            remove(backdrop, true);
-            backdrop.destroy();
-        }
-        if (floor != null)
-        {
-            remove(floor, true);
-            floor.destroy();
+            backdrop.makeGraphic(FlxG.width, FlxG.height, stageColors[stageIndex]);
+            floor.makeGraphic(FlxG.width, Std.int(FlxG.height * 0.22), FlxColor.fromRGB(36 + stageIndex * 8, 22 + stageIndex * 10, 43 + stageIndex * 6));
+            return;
         }
 
         backdrop = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, stageColors[stageIndex]);
@@ -525,7 +522,6 @@ class PlaygroundSandboxState extends MusicBeatState
         var floorLine:FlxSprite = new FlxSprite(0, FlxG.height * 0.78).makeGraphic(FlxG.width, 4, FlxColor.fromRGB(210, 150, 255));
         add(floorLine);
     }
-
     private function refreshLabels():Void
     {
         characterLabel.text = "CHARACTER: " + characterNames[characterIndex];
@@ -544,7 +540,7 @@ class PlaygroundSandboxState extends MusicBeatState
 
         player = new Character(FlxG.width * 0.54, FlxG.height * 0.30, characterIds[characterIndex], true);
         player.dance();
-        add(player);
+        insert(7, player);
         refreshLabels();
         FlxG.sound.play(Paths.sound("scrollMenu"), 0.5);
     }
@@ -664,7 +660,7 @@ class PlaygroundFreeplayState extends FreeplayState
         add(title);
 
         var detail:FlxText = new FlxText(70, 160, FlxG.width - 140, message, 20);
-        detail.setFormat(Paths.font("vcr.ttf"), 20, FlxColor.WHITE, CENTER);
+        detail.setFormat(Paths.font("vcr.ttf"), 20, FlxColor.WHITE, FlxTextAlign.CENTER);
         detail.borderStyle = FlxTextBorderStyle.OUTLINE;
         detail.borderColor = FlxColor.BLACK;
         detail.borderSize = 2;
