@@ -454,8 +454,6 @@ class PlaygroundSandboxState extends MusicBeatState
     private var stageLabel:FlxText;
     private var actionLabel:FlxText;
 
-    private var playerOneSingTimer:Float = 0;
-    private var playerTwoSingTimer:Float = 0;
     private var previousAssetDirectory:String = null;
 
     override function create():Void
@@ -513,34 +511,41 @@ class PlaygroundSandboxState extends MusicBeatState
 
         var topBar:FlxSprite = new FlxSprite(0, 0).makeGraphic(FlxG.width, 82, FlxColor.BLACK);
         topBar.alpha = 0.68;
+        topBar.scrollFactor.set(0, 0);
         add(topBar);
 
         var title:FlxText = new FlxText(28, 18, 560, "FNF PLAYGROUND", 36);
         title.setFormat(Paths.font("vcr.ttf"), 36, FlxColor.WHITE, FlxTextAlign.LEFT);
+        title.scrollFactor.set(0, 0);
         add(title);
 
         var infoStart:Float = FlxG.width * 0.37;
 
         playerOneLabel = new FlxText(infoStart, 20, FlxG.width * 0.18, "", 15);
         playerOneLabel.setFormat(Paths.font("vcr.ttf"), 15, FlxColor.CYAN, FlxTextAlign.LEFT);
+        playerOneLabel.scrollFactor.set(0, 0);
         add(playerOneLabel);
 
         playerTwoLabel = new FlxText(FlxG.width * 0.56, 20, FlxG.width * 0.18, "", 15);
         playerTwoLabel.setFormat(Paths.font("vcr.ttf"), 15, FlxColor.LIME, FlxTextAlign.LEFT);
+        playerTwoLabel.scrollFactor.set(0, 0);
         add(playerTwoLabel);
 
         stageLabel = new FlxText(FlxG.width * 0.75, 20, FlxG.width * 0.23, "", 14);
         stageLabel.setFormat(Paths.font("vcr.ttf"), 14, FlxColor.WHITE, FlxTextAlign.LEFT);
+        stageLabel.scrollFactor.set(0, 0);
         add(stageLabel);
 
         var controlsText:FlxText = new FlxText(24, FlxG.height - 78, FlxG.width - 48,
             "P1: ARROWS  |  P2: W A S D  |  F/G: P1 CHARACTER  |  U/I: P2 CHARACTER  |  Q/E: STAGE  |  M: MODS", 12);
         controlsText.setFormat(Paths.font("vcr.ttf"), 12, FlxColor.WHITE, FlxTextAlign.CENTER);
         controlsText.alpha = 0.88;
+        controlsText.scrollFactor.set(0, 0);
         add(controlsText);
 
         actionLabel = new FlxText(24, FlxG.height - 48, FlxG.width - 48, "P1: ARROWS     P2: W A S D", 18);
         actionLabel.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.WHITE, FlxTextAlign.CENTER);
+        actionLabel.scrollFactor.set(0, 0);
         add(actionLabel);
 
         refreshLabels();
@@ -581,6 +586,14 @@ class PlaygroundSandboxState extends MusicBeatState
         var p2Pos = characterPosition(false);
         playerOne = new Character(p1Pos[0], p1Pos[1], characterIds[characterIndexP1], true);
         playerTwo = new Character(p2Pos[0], p2Pos[1], characterIds[characterIndexP2], false);
+
+        // In normal PlayState the opponent is returned to idle by Character.update().
+        // The sandbox has two controllable characters, so enable that same built-in
+        // sing-hold timeout for both without changing their already-computed facing.
+        playerOne.isPlayer = false;
+        playerTwo.isPlayer = false;
+        playerOne.holdTimer = 0;
+        playerTwo.holdTimer = 0;
         playerOne.dance();
         playerTwo.dance();
 
@@ -715,10 +728,9 @@ class PlaygroundSandboxState extends MusicBeatState
             cameraTarget.y += offsetValue(actor.cameraPosition, 1) + offsetValue(data == null ? null : data.camera_opponent, 1);
         }
 
-        // Playground is a fixed sandbox: disable follow interpolation so the camera
-        // cannot keep drifting after repeated focus changes.
-        FlxG.camera.follow(null);
-        FlxG.camera.scroll.set(cameraTarget.x - FlxG.width * 0.5, cameraTarget.y - FlxG.height * 0.5);
+        // Match Psych Engine's PlayState camera setup: lock onto a fixed target
+        // with zero lerp, so focus changes snap instead of accumulating drift.
+        FlxG.camera.follow(cameraTarget, FlxCameraFollowStyle.LOCKON, 0);
     }
 
     private function refreshLabels():Void
@@ -766,9 +778,6 @@ class PlaygroundSandboxState extends MusicBeatState
         actor.holdTimer = 0;
         actor.playAnim("sing" + direction, true);
 
-        if (isPlayerOne) playerOneSingTimer = 0.55;
-        else playerTwoSingTimer = 0.55;
-
         actionLabel.text = (isPlayerOne ? "PLAYER 1" : "PLAYER 2") + " / SING " + direction;
         focusCamera(isPlayerOne);
     }
@@ -809,27 +818,6 @@ class PlaygroundSandboxState extends MusicBeatState
         if (boundJustPressed("pg_p2_note_down")) singPlayer(false, "DOWN");
         if (boundJustPressed("pg_p2_note_up")) singPlayer(false, "UP");
         if (boundJustPressed("pg_p2_note_right")) singPlayer(false, "RIGHT");
-
-        if (playerOneSingTimer > 0)
-        {
-            playerOneSingTimer -= elapsed;
-            if (playerOneSingTimer <= 0 && playerOne != null)
-            {
-                playerOne.holdTimer = 0;
-                playerOne.specialAnim = false;
-                playerOne.dance();
-            }
-        }
-        if (playerTwoSingTimer > 0)
-        {
-            playerTwoSingTimer -= elapsed;
-            if (playerTwoSingTimer <= 0 && playerTwo != null)
-            {
-                playerTwo.holdTimer = 0;
-                playerTwo.specialAnim = false;
-                playerTwo.dance();
-            }
-        }
 
         super.update(elapsed);
     }
