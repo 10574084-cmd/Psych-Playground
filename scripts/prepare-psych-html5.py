@@ -34,6 +34,24 @@ main.write_text(source, encoding="utf-8")
 freeplay = root / "source" / "states" / "FreeplayState.hx"
 freeplay_source = freeplay.read_text(encoding="utf-8")
 
+# HTML5 fallback: avoid malformed external week JSON and boot with Psych's
+# built-in starter week so Freeplay has valid song metadata.
+reload_anchor = chr(9) * 2 + "WeekData.reloadWeekFiles(false);"
+html5_week_bootstrap = (
+    chr(9) * 2 + "#if html5" + chr(10)
+    + chr(9) * 2 + 'var playgroundWeekName:String = "playgroundDefault";' + chr(10)
+    + chr(9) * 2 + "var playgroundWeek:WeekData = new WeekData(WeekData.createWeekFile(), playgroundWeekName);" + chr(10)
+    + chr(9) * 2 + "playgroundWeek.startUnlocked = true;" + chr(10)
+    + chr(9) * 2 + 'playgroundWeek.weekBefore = "";' + chr(10)
+    + chr(9) * 2 + "WeekData.weeksLoaded.set(playgroundWeekName, playgroundWeek);" + chr(10)
+    + chr(9) * 2 + "WeekData.weeksList = [playgroundWeekName];" + chr(10)
+    + chr(9) * 2 + "#end" + chr(10)
+)
+if reload_anchor not in freeplay_source:
+    raise SystemExit("Could not locate WeekData.reloadWeekFiles in FreeplayState")
+if html5_week_bootstrap not in freeplay_source:
+    freeplay_source = freeplay_source.replace(reload_anchor, reload_anchor + chr(10) + html5_week_bootstrap, 1)
+
 # Browser builds may load partially populated week JSON. Guard fields that
 # Psych's original FreeplayState assumes are always non-null.
 week_entry = "var leWeek:WeekData = WeekData.weeksLoaded.get(WeekData.weeksList[i]);"
