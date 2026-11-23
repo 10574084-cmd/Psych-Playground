@@ -33,6 +33,25 @@ main.write_text(source, encoding="utf-8")
 # Restore a valid starter week if HTML5 did not expose weekList/week JSON assets.
 freeplay = root / "source" / "states" / "FreeplayState.hx"
 freeplay_source = freeplay.read_text(encoding="utf-8")
+
+# Browser builds may load partially populated week JSON. Guard fields that
+# Psych's original FreeplayState assumes are always non-null.
+week_entry = "var leWeek:WeekData = WeekData.weeksLoaded.get(WeekData.weeksList[i]);"
+week_entry_guard = week_entry + """
+			if (leWeek == null || leWeek.songs == null)
+			{
+				trace('[Playground] Skipping week with null metadata: ' + WeekData.weeksList[i]);
+				continue;
+			}"""
+if week_entry not in freeplay_source:
+    raise SystemExit("Could not locate Freeplay week metadata access")
+if week_entry_guard not in freeplay_source:
+    freeplay_source = freeplay_source.replace(week_entry, week_entry_guard, 1)
+freeplay_source = freeplay_source.replace(
+    "return (!leWeek.startUnlocked && leWeek.weekBefore.length > 0",
+    "return (leWeek != null && !leWeek.startUnlocked && leWeek.weekBefore != null && leWeek.weekBefore.length > 0",
+    1
+)
 freeplay_anchor = "\t\tMods.loadTopMod();"
 freeplay_fallback = """\t\tif (songs.length == 0)
 \t\t{
@@ -277,7 +296,7 @@ class PlaygroundFreeplayState extends FreeplayState
     {
         if (playgroundFailed) return;
         playgroundFailed = true;
-        var message:String = Std.string(error);
+        var message:String = Std.string(error) + "\n\n" + haxe.CallStack.toString(haxe.CallStack.exceptionStack(true));
         trace("[Playground Freeplay error] " + message);
 
         var shade:FlxSprite = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, FlxColor.BLACK);
