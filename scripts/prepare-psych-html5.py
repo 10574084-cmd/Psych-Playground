@@ -355,7 +355,7 @@ class PlaygroundFreeplayState extends FreeplayState
     {
         if (playgroundFailed) return;
         playgroundFailed = true;
-        var message:String = Std.string(error) + "\n\n" + haxe.CallStack.toString(haxe.CallStack.exceptionStack(true));
+        var message:String = Std.string(error) + "\nPhase: " + FreeplayState.playgroundDebugStage + "\n\n" + haxe.CallStack.toString(haxe.CallStack.exceptionStack(true));
         trace("[Playground Freeplay error] " + message);
 
         var shade:FlxSprite = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, FlxColor.BLACK);
