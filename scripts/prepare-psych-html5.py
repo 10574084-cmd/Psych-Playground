@@ -422,6 +422,7 @@ sandbox_source = r'''package states;
 import backend.BaseStage;
 import backend.CoolUtil;
 import backend.Paths;
+import backend.PlaygroundModStore;
 import backend.Song;
 import flixel.FlxBasic;
 import flixel.FlxG;
@@ -452,9 +453,24 @@ class PlaygroundSandboxState extends MusicBeatState
         super.create();
         FlxG.mouse.visible = true;
 
+        var loading:FlxText = new FlxText(0, FlxG.height * 0.45, FlxG.width, "LOADING PLAYGROUND CONTENT...", 24);
+        loading.setFormat(Paths.font("vcr.ttf"), 24, FlxColor.WHITE, FlxTextAlign.CENTER);
+        add(loading);
+        PlaygroundModStore.loadStored(function(success:Bool, message:String)
+        {
+            remove(loading, true);
+            loading.destroy();
+            buildPlayground();
+        });
+    }
+
+    private function buildPlayground():Void
+    {
         // Load the complete character catalog shipped by Psych Engine.
         characterIds = CoolUtil.coolTextFile(Paths.getSharedPath("data/characterList.txt"));
         characterIds = [for (id in characterIds) if (id != null && id.trim().length > 0) id.trim()];
+        for (modCharacter in PlaygroundModStore.characterIds)
+            if (characterIds.indexOf(modCharacter) < 0) characterIds.push(modCharacter);
         if (characterIds.length == 0) characterIds = ["bf", "dad", "gf"];
 
         // Stage classes read PlayState's song metadata. Supply the built-in tutorial metadata
@@ -1211,7 +1227,65 @@ class PlaygroundModsState extends MusicBeatState
 mods_file.write_text(mods_source, encoding="utf-8")
 
 # Paths.loadAnimateAtlas accepts asset paths. The HTML5 target has no sys.io.File.
+# Resolve imported characters from the browser ZIP store in Character's constructor.
+character = root / "source" / "objects" / "Character.hx"
+character_source = character.read_text(encoding="utf-8")
+character_source = character_source.replace(
+    "if (!Assets.exists(path))",
+    "if (!Assets.exists(path) && PlaygroundModStore.getText(characterPath) == null)",
+    1
+)
+character_source = character_source.replace(
+    "loadCharacterFile(Json.parse(Assets.getText(path)));",
+    "loadCharacterFile(Json.parse(PlaygroundModStore.getText(characterPath) != null ? PlaygroundModStore.getText(characterPath) : Assets.getText(path)));",
+    1
+)
+if "PlaygroundModStore.getText(characterPath)" not in character_source:
+    raise SystemExit("Could not patch Character browser JSON loader")
+character.write_text(character_source, encoding="utf-8")
+
 path_source = paths.read_text(encoding="utf-8")
+
+# Resolve the imported ZIP's preloaded character atlas graphics before embedded assets.
+image_anchor = "\t\tvar bitmap:BitmapData = null;"
+image_code = """\t\t#if html5
+\t\tvar importedGraphic = PlaygroundModStore.getGraphic(key);
+\t\tif (importedGraphic != null)
+\t\t{
+\t\t\tlocalTrackedAssets.push("playground-mod:" + key);
+\t\t\treturn importedGraphic;
+\t\t}
+\t\t#end
+"""
+if image_anchor not in path_source:
+    raise SystemExit("Could not locate Paths.image bitmap initialization")
+if image_code not in path_source:
+    path_source = path_source.replace(image_anchor, image_code + image_anchor, 1)
+
+atlas_specs = [
+    ("static public function getAtlas", "images/' + key + '.xml", "modXml", "FlxAtlasFrames.fromSparrow(imageLoaded, modXml)"),
+    ("inline static public function getSparrowAtlas", "images/' + key + '.xml", "modXml", "FlxAtlasFrames.fromSparrow(imageLoaded, modXml)"),
+    ("inline static public function getPackerAtlas", "images/' + key + '.txt", "modText", "FlxAtlasFrames.fromSpriteSheetPacker(imageLoaded, modText)"),
+    ("inline static public function getAsepriteAtlas", "images/' + key + '.json", "modJson", "FlxAtlasFrames.fromTexturePackerJson(imageLoaded, modJson)"),
+]
+for signature, path_expression, variable, return_expression in atlas_specs:
+    method_start = path_source.find(signature)
+    if method_start < 0:
+        raise SystemExit("Could not find " + signature)
+    image_line = "\t\tvar imageLoaded:FlxGraphic = image(key, library, allowGPU);"
+    line_at = path_source.find(image_line, method_start)
+    if line_at < 0:
+        raise SystemExit("Could not find image initialization in " + signature)
+    insert_at = line_at + len(image_line)
+    code = (
+        "\n\t\t#if html5\n"
+        + "\t\tvar " + variable + ":String = PlaygroundModStore.getText('" + path_expression + ");\n"
+        + "\t\tif (" + variable + " != null) return " + return_expression + ";\n"
+        + "\t\t#end"
+    )
+    if code not in path_source[insert_at:insert_at + 500]:
+        path_source = path_source[:insert_at] + code + path_source[insert_at:]
+
 for variable in ("spriteJson", "animationJson"):
     old_line = f"{variable} = File.getContent({variable});"
     new_block = (
