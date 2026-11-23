@@ -1031,42 +1031,183 @@ mod_store.write_text(mod_store_source, encoding="utf-8")
 mods_file = root / "source" / "states" / "PlaygroundModsState.hx"
 mods_source = r'''package states;
 
+import openfl.net.FileReference;
+import openfl.net.FileFilter;
+import openfl.events.Event;
+import openfl.events.IOErrorEvent;
+import backend.PlaygroundModStore;
+
 class PlaygroundModsState extends MusicBeatState
 {
+    public static var returnToSandbox:Bool = false;
+
+    private var fileRef:FileReference;
+    private var options:Array<FlxText> = [];
+    private var selected:Int = 0;
+    private var statusText:FlxText;
+    private var busy:Bool = false;
+
     override function create():Void
     {
-        var bg:FlxSprite = new FlxSprite().loadGraphic(Paths.image("menuDesat"));
-        bg.color = 0xFF665AFF;
-        bg.antialiasing = ClientPrefs.data.antialiasing;
-        bg.screenCenter();
+        super.create();
+        FlxG.mouse.visible = true;
+
+        var bg:FlxSprite = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, 0xFF171326);
         add(bg);
 
-        var title:FlxText = new FlxText(80, 105, FlxG.width - 160, "MODS", 56);
-        title.setFormat(Paths.font("vcr.ttf"), 56, FlxColor.WHITE, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
-        title.borderSize = 3;
+        var top:FlxSprite = new FlxSprite(0, 0).makeGraphic(FlxG.width, 100, FlxColor.BLACK);
+        top.alpha = 0.72;
+        add(top);
+
+        var title:FlxText = new FlxText(44, 24, FlxG.width - 88, "PLAYGROUND  /  MOD MANAGER", 40);
+        title.setFormat(Paths.font("vcr.ttf"), 40, FlxColor.WHITE, FlxTextAlign.LEFT);
         add(title);
 
-        var message:FlxText = new FlxText(150, 265, FlxG.width - 300,
-            "BROWSER BUILD\n\nPsych Engine 0.7.3 uses a desktop folder-based mod loader.\nThat loader is disabled in HTML5 builds.\n\nZIP character importing still needs a native browser asset bridge.", 25);
-        message.setFormat(Paths.font("vcr.ttf"), 25, FlxColor.WHITE, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
-        message.borderSize = 2;
-        add(message);
+        var subtitle:FlxText = new FlxText(48, 78, FlxG.width - 96, "IMPORT A PSYCH ENGINE MOD ZIP", 16);
+        subtitle.setFormat(Paths.font("vcr.ttf"), 16, FlxColor.CYAN, FlxTextAlign.LEFT);
+        add(subtitle);
 
-        var back:FlxText = new FlxText(0, FlxG.height - 85, FlxG.width, "ESC  /  BACK  —  MAIN MENU", 20);
-        back.setFormat(Paths.font("vcr.ttf"), 20, FlxColor.CYAN, CENTER);
-        add(back);
+        var labels:Array<String> = ["IMPORT MOD ZIP", "REMOVE IMPORTED MOD", "BACK"];
+        for (i in 0...labels.length)
+        {
+            var item:FlxText = new FlxText(90, 210 + i * 86, FlxG.width - 180, labels[i], 30);
+            item.setFormat(Paths.font("vcr.ttf"), 30, FlxColor.WHITE, FlxTextAlign.LEFT);
+            options.push(item);
+            add(item);
+        }
 
-        super.create();
+        var detail:FlxText = new FlxText(90, 485, FlxG.width - 180,
+            "IMPORT EXTRACTS CHARACTERS AND THEIR PNG ATLASES.\nPLAYGROUND RELOADS AFTER IMPORT TO REGISTER THEM.", 18);
+        detail.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.WHITE, FlxTextAlign.LEFT);
+        add(detail);
+
+        statusText = new FlxText(90, FlxG.height - 95, FlxG.width - 180, "ARROWS: SELECT     ENTER: CONFIRM     ESC: BACK", 16);
+        statusText.setFormat(Paths.font("vcr.ttf"), 16, FlxColor.YELLOW, FlxTextAlign.LEFT);
+        add(statusText);
+
+        refreshSelection();
+    }
+
+    private function refreshSelection():Void
+    {
+        var labels:Array<String> = ["IMPORT MOD ZIP", "REMOVE IMPORTED MOD", "BACK"];
+        for (i in 0...options.length)
+        {
+            options[i].color = i == selected ? FlxColor.CYAN : FlxColor.WHITE;
+            options[i].text = (i == selected ? ">  " : "   ") + labels[i];
+        }
+    }
+
+    private function browseZip():Void
+    {
+        if (busy) return;
+        fileRef = new FileReference();
+        fileRef.addEventListener(Event.SELECT, onZipSelected);
+        fileRef.addEventListener(IOErrorEvent.IO_ERROR, onZipError);
+        fileRef.browse([new FileFilter("Psych Engine Mod ZIP", "*.zip")]);
+    }
+
+    private function onZipSelected(event:Event):Void
+    {
+        fileRef.removeEventListener(Event.SELECT, onZipSelected);
+        fileRef.addEventListener(Event.COMPLETE, onZipLoaded);
+        statusText.text = "READING " + fileRef.name + "...";
+        busy = true;
+        fileRef.load();
+    }
+
+    private function onZipLoaded(event:Event):Void
+    {
+        statusText.text = "EXTRACTING CHARACTER JSON AND PNG ATLASES...";
+        PlaygroundModStore.importZip(cast fileRef.data, fileRef.name, function(success:Bool, message:String)
+        {
+            busy = false;
+            if (success)
+            {
+                statusText.text = message + "  /  RELOADING PLAYGROUND...";
+                #if js
+                js.Browser.window.location.reload();
+                #end
+            }
+            else
+            {
+                statusText.text = "IMPORT FAILED: " + message;
+                FlxG.sound.play(Paths.sound("cancelMenu"));
+            }
+        });
+    }
+
+    private function onZipError(event:IOErrorEvent):Void
+    {
+        busy = false;
+        statusText.text = "ZIP READ FAILED: " + event.text;
+    }
+
+    private function confirmSelection():Void
+    {
+        if (busy) return;
+        switch (selected)
+        {
+            case 0: browseZip();
+            case 1:
+                busy = true;
+                PlaygroundModStore.clearStored(function(success:Bool, message:String)
+                {
+                    busy = false;
+                    statusText.text = message;
+                    if (success)
+                    {
+                        #if js
+                        js.Browser.window.location.reload();
+                        #end
+                    }
+                });
+            case 2: goBack();
+        }
+    }
+
+    private function goBack():Void
+    {
+        if (returnToSandbox)
+        {
+            returnToSandbox = false;
+            MusicBeatState.switchState(new PlaygroundSandboxState());
+        }
+        else
+        {
+            MusicBeatState.switchState(new PlaygroundMenuState());
+        }
     }
 
     override function update(elapsed:Float):Void
     {
         super.update(elapsed);
-        if (controls.BACK || controls.ACCEPT)
-            MusicBeatState.switchState(new PlaygroundMenuState());
+        if (busy) return;
+
+        if (controls.BACK || FlxG.keys.justPressed.ESCAPE)
+        {
+            goBack();
+            return;
+        }
+
+        if (controls.UI_UP_P) selected = (selected + options.length - 1) % options.length;
+        if (controls.UI_DOWN_P) selected = (selected + 1) % options.length;
+
+        for (i in 0...options.length)
+        {
+            if (FlxG.mouse.overlaps(options[i]))
+            {
+                selected = i;
+                if (FlxG.mouse.justPressed) confirmSelection();
+            }
+        }
+
+        refreshSelection();
+        if (controls.ACCEPT) confirmSelection();
     }
 }
 '''
+
 mods_file.write_text(mods_source, encoding="utf-8")
 
 # Paths.loadAnimateAtlas accepts asset paths. The HTML5 target has no sys.io.File.
