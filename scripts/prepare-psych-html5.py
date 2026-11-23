@@ -423,7 +423,7 @@ import backend.Paths;
 import flixel.FlxG;
 import flixel.FlxSprite;
 import flixel.text.FlxText;
-import flixel.text.FlxTextAlign;
+import flixel.text.FlxText.FlxTextAlign;
 import flixel.util.FlxColor;
 import objects.Character;
 
