@@ -445,6 +445,8 @@ class PlaygroundSandboxState extends MusicBeatState
 
     private var playerOne:Character;
     private var playerTwo:Character;
+    private var playerOneSingTimer:Float = 0;
+    private var playerTwoSingTimer:Float = 0;
     private var cameraTarget:FlxObject;
     private var activeStage:BaseStage;
     private var stageObjects:Array<FlxBasic> = [];
@@ -587,11 +589,13 @@ class PlaygroundSandboxState extends MusicBeatState
         playerOne = new Character(p1Pos[0], p1Pos[1], characterIds[characterIndexP1], true);
         playerTwo = new Character(p2Pos[0], p2Pos[1], characterIds[characterIndexP2], false);
 
-        // In normal PlayState the opponent is returned to idle by Character.update().
-        // The sandbox has two controllable characters, so enable that same built-in
-        // sing-hold timeout for both without changing their already-computed facing.
-        playerOne.isPlayer = false;
-        playerTwo.isPlayer = false;
+        // This sandbox has no running Conductor/song clock. Keep both actors as
+        // players and use a local elapsed-time timer instead of Character's
+        // beat-based opponent timeout, which can expire almost immediately here.
+        playerOne.isPlayer = true;
+        playerTwo.isPlayer = true;
+        playerOneSingTimer = 0;
+        playerTwoSingTimer = 0;
         playerOne.holdTimer = 0;
         playerTwo.holdTimer = 0;
         playerOne.dance();
@@ -776,6 +780,8 @@ class PlaygroundSandboxState extends MusicBeatState
         var actor:Character = isPlayerOne ? playerOne : playerTwo;
         if (actor == null) return;
         actor.holdTimer = 0;
+        if (isPlayerOne) playerOneSingTimer = 0.22;
+        else playerTwoSingTimer = 0.22;
         actor.playAnim("sing" + direction, true);
 
         actionLabel.text = (isPlayerOne ? "PLAYER 1" : "PLAYER 2") + " / SING " + direction;
@@ -818,6 +824,19 @@ class PlaygroundSandboxState extends MusicBeatState
         if (boundJustPressed("pg_p2_note_down")) singPlayer(false, "DOWN");
         if (boundJustPressed("pg_p2_note_up")) singPlayer(false, "UP");
         if (boundJustPressed("pg_p2_note_right")) singPlayer(false, "RIGHT");
+
+        // Return to idle after a short fixed hold. This is independent of BPM,
+        // Conductor.stepCrochet, and whether a song is currently playing.
+        if (playerOneSingTimer > 0)
+        {
+            playerOneSingTimer -= elapsed;
+            if (playerOneSingTimer <= 0 && playerOne != null) playerOne.dance();
+        }
+        if (playerTwoSingTimer > 0)
+        {
+            playerTwoSingTimer -= elapsed;
+            if (playerTwoSingTimer <= 0 && playerTwo != null) playerTwo.dance();
+        }
 
         super.update(elapsed);
     }
