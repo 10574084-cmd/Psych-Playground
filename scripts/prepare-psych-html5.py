@@ -447,6 +447,8 @@ class PlaygroundSandboxState extends MusicBeatState
     private var playerTwo:Character;
     private var playerOneSingTimer:Float = 0;
     private var playerTwoSingTimer:Float = 0;
+    private var playerOneSingAnim:String = null;
+    private var playerTwoSingAnim:String = null;
     private var cameraTarget:FlxObject;
     private var activeStage:BaseStage;
     private var stageObjects:Array<FlxBasic> = [];
@@ -780,8 +782,16 @@ class PlaygroundSandboxState extends MusicBeatState
         var actor:Character = isPlayerOne ? playerOne : playerTwo;
         if (actor == null) return;
         actor.holdTimer = 0;
-        if (isPlayerOne) playerOneSingTimer = 0.22;
-        else playerTwoSingTimer = 0.22;
+        if (isPlayerOne)
+        {
+            playerOneSingTimer = 0.55;
+            playerOneSingAnim = "sing" + direction;
+        }
+        else
+        {
+            playerTwoSingTimer = 0.55;
+            playerTwoSingAnim = "sing" + direction;
+        }
         actor.playAnim("sing" + direction, true);
 
         actionLabel.text = (isPlayerOne ? "PLAYER 1" : "PLAYER 2") + " / SING " + direction;
@@ -832,15 +842,34 @@ class PlaygroundSandboxState extends MusicBeatState
         if (playerOneSingTimer > 0)
         {
             playerOneSingTimer -= singElapsed;
-            if (playerOneSingTimer <= 0 && playerOne != null) playerOne.dance();
+            if (playerOneSingTimer <= 0)
+            {
+                playerOneSingTimer = 0;
+                playerOneSingAnim = null;
+                if (playerOne != null) playerOne.dance();
+            }
         }
         if (playerTwoSingTimer > 0)
         {
             playerTwoSingTimer -= singElapsed;
-            if (playerTwoSingTimer <= 0 && playerTwo != null) playerTwo.dance();
+            if (playerTwoSingTimer <= 0)
+            {
+                playerTwoSingTimer = 0;
+                playerTwoSingAnim = null;
+                if (playerTwo != null) playerTwo.dance();
+            }
         }
 
         super.update(elapsed);
+
+        // Some Character/stage updates can replace a just-requested sing pose.
+        // Reassert the active direction after all members have updated.
+        if (playerOneSingTimer > 0 && playerOne != null && playerOneSingAnim != null
+            && playerOne.getAnimationName() != playerOneSingAnim)
+            playerOne.playAnim(playerOneSingAnim, true);
+        if (playerTwoSingTimer > 0 && playerTwo != null && playerTwoSingAnim != null
+            && playerTwo.getAnimationName() != playerTwoSingAnim)
+            playerTwo.playAnim(playerTwoSingAnim, true);
     }
 
     override function destroy():Void
